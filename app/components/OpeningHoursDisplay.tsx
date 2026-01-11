@@ -49,20 +49,33 @@ export function OpeningHoursDisplay({
     const [loading, setLoading] = useState(true);
     const [noteText, setNoteText] = useState<string>(note);
 
+    const [closed, setClosed] = useState(false);
+    const [closedMessage, setClosedMessage] = useState("");
+
     useEffect(() => {
         const load = async () => {
             try {
                 const ref = doc(db, "content", "global");
                 const snap = await getDoc(ref);
+
                 if (snap.exists()) {
                     const data = snap.data() as any;
+
+                    if (typeof data.openingClosed === "boolean") {
+                        setClosed(data.openingClosed);
+                    }
+
+                    if (typeof data.openingClosedMessage === "string") {
+                        setClosedMessage(data.openingClosedMessage);
+                    }
 
                     if (typeof data.openingSeason === "string" && data.openingSeason.trim()) {
                         setSeason(data.openingSeason.trim());
                     }
 
-                    if (data.openingHours && typeof data.openingHours === "object") {
+                    if (!data.openingClosed && data.openingHours && typeof data.openingHours === "object") {
                         const list: string[] = [];
+
                         for (const day of dayOrder) {
                             const dayData = data.openingHours[day];
                             if (
@@ -73,15 +86,17 @@ export function OpeningHoursDisplay({
                                 dayData.from &&
                                 dayData.to
                             ) {
-                                const from = dayData.from.slice(0, 5); // HH:MM
+                                const from = dayData.from.slice(0, 5);
                                 const to = dayData.to.slice(0, 5);
                                 list.push(`${dayLabels[day]} ${from}–${to}`);
                             }
                         }
+
                         if (list.length > 0) {
                             setLines(list);
                         }
                     }
+
                     if (typeof data.openingNote === "string") {
                         setNoteText(data.openingNote);
                     }
@@ -98,24 +113,32 @@ export function OpeningHoursDisplay({
 
     return (
         <div className="mt-6 max-w-prose text-sm leading-7 text-neutral-700">
-            <p>
-                <span className="font-medium text-neutral-900">
-                    Åpningstider{season ? ` (${season})` : ""}:
-                </span>
-                <br />
-                {loading && !lines
-                    ? fallbackHoursLine
-                    : lines && lines.length > 0
-                        ? lines.map((line, i) => (
-                            <span key={i}>
-                                {line}
-                                {i < lines.length - 1 ? <br /> : null}
-                            </span>
-                        ))
-                        : fallbackHoursLine}
-            </p>
-            {noteText.trim() && (
-                <p className="mt-4">{noteText}</p>
+            {closed ? (
+                <p>
+                    <span className="font-medium text-neutral-900">Midlertidig stengt:</span>{" "}
+                    {closedMessage || "Vi held for tida stengt."}
+                </p>
+            ) : (
+                <>
+                    <p>
+                        <span className="font-medium text-neutral-900">
+                            Åpningstider{season ? ` (${season})` : ""}:
+                        </span>
+                        <br />
+                        {loading && !lines
+                            ? fallbackHoursLine
+                            : lines && lines.length > 0
+                                ? lines.map((line, i) => (
+                                    <span key={i}>
+                                        {line}
+                                        {i < lines.length - 1 ? <br /> : null}
+                                    </span>
+                                ))
+                                : fallbackHoursLine}
+                    </p>
+
+                    {noteText.trim() && <p className="mt-4">{noteText}</p>}
+                </>
             )}
         </div>
     );

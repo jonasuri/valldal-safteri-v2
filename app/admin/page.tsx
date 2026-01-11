@@ -84,6 +84,8 @@ export default function AdminPage() {
     const [openingSeason, setOpeningSeason] = useState("");
     const [openingHours, setOpeningHours] = useState<OpeningHours>(defaultOpeningHours);
     const [openingNote, setOpeningNote] = useState("");
+    const [openingClosed, setOpeningClosed] = useState(false);
+    const [openingClosedMessage, setOpeningClosedMessage] = useState("");
 
     const [contactAddress, setContactAddress] = useState("");
     const [contactPhone, setContactPhone] = useState("");
@@ -144,6 +146,8 @@ export default function AdminPage() {
     const [initialOpeningSeason, setInitialOpeningSeason] = useState("");
     const [initialOpeningHours, setInitialOpeningHours] = useState<OpeningHours>(defaultOpeningHours);
     const [initialOpeningNote, setInitialOpeningNote] = useState("");
+    const [initialOpeningClosed, setInitialOpeningClosed] = useState(false);
+    const [initialOpeningClosedMessage, setInitialOpeningClosedMessage] = useState("");
     const [initialContactAddress, setInitialContactAddress] = useState("");
     const [initialContactPhone, setInitialContactPhone] = useState("");
     const [initialContactEmail, setInitialContactEmail] = useState("");
@@ -225,6 +229,8 @@ export default function AdminPage() {
                 let loadedSeason = "";
                 let loadedHours: OpeningHours = defaultOpeningHours;
                 let loadedNote = "";
+                let loadedClosed = false;
+                let loadedClosedMessage = "";
                 let loadedAddress = "";
                 let loadedPhone = "";
                 let loadedEmail = "";
@@ -252,6 +258,16 @@ export default function AdminPage() {
                 if (typeof data.openingNote === "string") {
                     loadedNote = data.openingNote;
                     setOpeningNote(loadedNote);
+                }
+
+                if (typeof data.openingClosed === "boolean") {
+                    loadedClosed = data.openingClosed;
+                    setOpeningClosed(loadedClosed);
+                }
+
+                if (typeof data.openingClosedMessage === "string") {
+                    loadedClosedMessage = data.openingClosedMessage;
+                    setOpeningClosedMessage(loadedClosedMessage);
                 }
 
                 if (typeof data.contactAddress === "string") {
@@ -555,6 +571,8 @@ export default function AdminPage() {
                 setInitialOpeningSeason(loadedSeason);
                 setInitialOpeningHours(loadedHours);
                 setInitialOpeningNote(loadedNote);
+                setInitialOpeningClosed(loadedClosed);
+                setInitialOpeningClosedMessage(loadedClosedMessage);
                 setInitialContactAddress(loadedAddress);
                 setInitialContactPhone(loadedPhone);
                 setInitialContactEmail(loadedEmail);
@@ -608,6 +626,8 @@ export default function AdminPage() {
             openingSeason !== initialOpeningSeason ||
             JSON.stringify(openingHours) !== JSON.stringify(initialOpeningHours) ||
             openingNote !== initialOpeningNote ||
+            openingClosed !== initialOpeningClosed ||
+            openingClosedMessage !== initialOpeningClosedMessage ||
             contactAddress !== initialContactAddress ||
             contactPhone !== initialContactPhone ||
             contactEmail !== initialContactEmail ||
@@ -704,6 +724,8 @@ export default function AdminPage() {
                     openingSeason,
                     openingHours,
                     openingNote,
+                    openingClosed,
+                    openingClosedMessage,
                     contactAddress,
                     contactPhone,
                     contactEmail,
@@ -749,6 +771,8 @@ export default function AdminPage() {
             setInitialOpeningSeason(openingSeason);
             setInitialOpeningHours(openingHours);
             setInitialOpeningNote(openingNote);
+            setInitialOpeningClosed(openingClosed);
+            setInitialOpeningClosedMessage(openingClosedMessage);
             setInitialContactAddress(contactAddress);
             setInitialContactPhone(contactPhone);
             setInitialContactEmail(contactEmail);
@@ -872,58 +896,92 @@ export default function AdminPage() {
                                             />
                                         </div>
 
-                                        <div className="space-y-2">
-                                            <p className="text-[11px] text-neutral-500">
-                                                Fyll inn klokkeslett for dagane de har ope. Tomme felt blir ikkje viste på nettsida.
-                                            </p>
-
-                                            <div className="space-y-1">
-                                                {dayOrder.map((day) => (
-                                                    <div key={day} className="flex items-center gap-3">
-                                                        <div className="w-24 text-[11px] font-medium text-neutral-800">
-                                                            {dayLabels[day]}
-                                                        </div>
-                                                        <input
-                                                            type="time"
-                                                            value={openingHours[day].from}
-                                                            onChange={(e) =>
-                                                                setOpeningHours((prev) => ({
-                                                                    ...prev,
-                                                                    [day]: { ...prev[day], from: e.target.value },
-                                                                }))
-                                                            }
-                                                            className="w-24 rounded-[8px] border border-[color:var(--line)] bg-white px-2 py-1 text-[11px] outline-none focus:border-neutral-800"
-                                                        />
-                                                        <span className="text-[11px] text-neutral-400">–</span>
-                                                        <input
-                                                            type="time"
-                                                            value={openingHours[day].to}
-                                                            onChange={(e) =>
-                                                                setOpeningHours((prev) => ({
-                                                                    ...prev,
-                                                                    [day]: { ...prev[day], to: e.target.value },
-                                                                }))
-                                                            }
-                                                            className="w-24 rounded-[8px] border border-[color:var(--line)] bg-white px-2 py-1 text-[11px] outline-none focus:border-neutral-800"
-                                                        />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-1">
-                                            <label className="font-medium" htmlFor="openingNote">
-                                                Notat (valfritt)
-                                            </label>
-                                            <textarea
-                                                id="openingNote"
-                                                rows={3}
-                                                value={openingNote}
-                                                onChange={(e) => setOpeningNote(e.target.value)}
-                                                className="w-full rounded-[10px] border border-[color:var(--line)] bg-white px-3 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
-                                                placeholder="Til dømes: Når vi er i produksjon held vi ofte lyset på – ta gjerne turen innom."
+                                        <label className="flex cursor-pointer items-center gap-2 text-[11px] text-neutral-700">
+                                            <input
+                                                type="checkbox"
+                                                checked={openingClosed}
+                                                onChange={(e) => setOpeningClosed(e.target.checked)}
+                                                className="h-4 w-4 rounded border border-[color:var(--line)]"
                                             />
-                                        </div>
+                                            <span className="font-medium text-neutral-800">Midlertidig stengt</span>
+                                            <span className="text-neutral-500">(viser melding i staden for åpningstider)</span>
+                                        </label>
+
+                                        {!openingClosed && (
+                                            <div className="space-y-2">
+                                                <p className="text-[11px] text-neutral-500">
+                                                    Fyll inn klokkeslett for dagane de har ope. Tomme felt blir ikkje viste på nettsida.
+                                                </p>
+
+                                                <div className="space-y-1">
+                                                    {dayOrder.map((day) => (
+                                                        <div key={day} className="flex items-center gap-3">
+                                                            <div className="w-24 text-[11px] font-medium text-neutral-800">
+                                                                {dayLabels[day]}
+                                                            </div>
+                                                            <input
+                                                                type="time"
+                                                                value={openingHours[day].from}
+                                                                onChange={(e) =>
+                                                                    setOpeningHours((prev) => ({
+                                                                        ...prev,
+                                                                        [day]: { ...prev[day], from: e.target.value },
+                                                                    }))
+                                                                }
+                                                                className="w-24 rounded-[8px] border border-[color:var(--line)] bg-white px-2 py-1 text-[11px] outline-none focus:border-neutral-800"
+                                                            />
+                                                            <span className="text-[11px] text-neutral-400">–</span>
+                                                            <input
+                                                                type="time"
+                                                                value={openingHours[day].to}
+                                                                onChange={(e) =>
+                                                                    setOpeningHours((prev) => ({
+                                                                        ...prev,
+                                                                        [day]: { ...prev[day], to: e.target.value },
+                                                                    }))
+                                                                }
+                                                                className="w-24 rounded-[8px] border border-[color:var(--line)] bg-white px-2 py-1 text-[11px] outline-none focus:border-neutral-800"
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {!openingClosed && (
+                                            <div className="space-y-1">
+                                                <label className="font-medium" htmlFor="openingNote">
+                                                    Notat (valfritt)
+                                                </label>
+                                                <textarea
+                                                    id="openingNote"
+                                                    rows={3}
+                                                    value={openingNote}
+                                                    onChange={(e) => setOpeningNote(e.target.value)}
+                                                    className="w-full rounded-[10px] border border-[color:var(--line)] bg-white px-3 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                    placeholder="Til dømes: Når vi er i produksjon held vi ofte lyset på – ta gjerne turen innom."
+                                                />
+                                            </div>
+                                        )}
+
+                                        {openingClosed && (
+                                            <div className="space-y-1">
+                                                <label className="font-medium" htmlFor="openingClosedMessage">
+                                                    Melding når stengt
+                                                </label>
+                                                <textarea
+                                                    id="openingClosedMessage"
+                                                    rows={3}
+                                                    value={openingClosedMessage}
+                                                    onChange={(e) => setOpeningClosedMessage(e.target.value)}
+                                                    className="w-full rounded-[10px] border border-[color:var(--line)] bg-white px-3 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                    placeholder="Til dømes: Stengt i januar. Opnar igjen i februar."
+                                                />
+                                                <p className="text-[11px] text-neutral-500">
+                                                    Denne meldinga blir vist på nettsida i staden for åpningstider.
+                                                </p>
+                                            </div>
+                                        )}
 
                                         <button
                                             type="button"
