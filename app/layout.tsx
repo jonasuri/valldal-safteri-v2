@@ -17,6 +17,10 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "Valldal – Safteri & Bryggeri",
   description: "Handverk frå Valldal. Tradisjon. Natur. Smak som varer.",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
