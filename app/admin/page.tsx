@@ -861,6 +861,14 @@ export default function AdminPage() {
                             >
                                 Produkter
                             </Link>
+
+                            <Link
+                                href="/admin/media"
+                                className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] px-4 py-1.5 text-xs text-neutral-700 hover:bg-black/5"
+                            >
+                                Media
+                            </Link>
+
                             <button
                                 onClick={handleLogout}
                                 className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] px-4 py-1.5 text-xs text-neutral-700 hover:bg-black/5"
