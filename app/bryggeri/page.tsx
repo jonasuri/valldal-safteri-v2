@@ -341,35 +341,11 @@ export default function BryggeriPage() {
                         </h2>
                     </div>
                 </div>
-                {/*
-                <div className="mt-8 grid gap-6 md:grid-cols-2">
-                    {siteContent.bryggeri.utval.categories.map((cat, idx) => (
-                        <Link
-                            key={idx}
-                            href={cat.title.toLowerCase().includes("sider")
-                                ? "/bryggeri/products?category=sider"
-                                : "/bryggeri/products?category=ol"}
-                            className="group block rounded-[28px] border border-[color:var(--line)] bg-[color:var(--accentSurface)] p-7 transition will-change-transform cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_14px_40px_rgba(0,0,0,0.07)] hover:bg-[color:var(--accentSoft)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/20"
-                        >
-                            <h3
-                                className="text-2xl tracking-tight md:text-3xl"
-                                style={{ fontFamily: "var(--font-serif)" }}
-                            >
-                                {cat.title}
-                            </h3>
-                            <p className="mt-3 text-sm leading-7 text-neutral-700">
-                                {cat.title.toLowerCase().includes("sider") ? siderDescription : olDescription}
-                            </p>
-                        </Link>
-                    ))}
-                </div>
-                */}
-
                 <div className="mt-8 grid gap-6 md:grid-cols-2">
                     {siteContent.bryggeri.utval.categories.map((cat, idx) => (
                         <div
                             key={idx}
-                            className="relative rounded-[28px] border border-[color:var(--line)] bg-[color:var(--accentSurface)] p-7 opacity-60"
+                            className="relative rounded-[28px] border border-[color:var(--line)] bg-[color:var(--accentSurface)] p-7 opacity-70"
                         >
                             <div className="absolute right-5 top-5 rounded-full border border-[color:var(--line)] bg-white/70 px-3 py-1 text-[11px] font-medium text-neutral-800">
                                 Kjem snart

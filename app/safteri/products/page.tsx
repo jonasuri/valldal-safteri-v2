@@ -1,21 +1,45 @@
 import Image from "next/image";
-import { products } from "@/lib/products";
+import { fetchProductsForBrand } from "@/lib/productsPublic";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ContactDisplay } from "../../components/ContactDisplay";
 import { siteContent } from "@/lib/siteContent";
 
+function normalizeDbCategory(value: unknown): "saft" | "sylte" | "gele" | "saus" | "frisk" | "rein" | "" {
+    if (typeof value !== "string") return "";
+    const v = value.trim().toLowerCase();
+
+    // handle accents and common variants
+    const plain = v
+        .replaceAll("é", "e")
+        .replaceAll("è", "e")
+        .replaceAll("ê", "e")
+        .replaceAll("á", "a")
+        .replaceAll("à", "a")
+        .replaceAll("å", "a")
+        .replaceAll("ø", "o")
+        .replaceAll("æ", "ae");
+
+    if (plain.includes("saft")) return "saft";
+    if (plain.includes("frisk")) return "frisk";
+    if (plain.includes("rein")) return "rein";
+    if (plain.includes("sylte")) return "sylte";
+    if (plain.includes("gele")) return "gele";
+    if (plain.includes("saus")) return "saus";
+    return "";
+}
+
 function ProductCard({ product }: { product: any }) {
     return (
         <Link
-            href={`/safteri/products/${product.slug ?? product.id}`}
+            href={`/safteri/products/${product.slug}`}
             className="group block cursor-pointer rounded-[24px] bg-[color:var(--accentSurface)] p-6 ring-1 ring-black/10 transition hover:-translate-y-0.5 hover:shadow-[0_14px_40px_rgba(0,0,0,0.06)] hover:bg-[color:var(--accentSoft)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/20"
             aria-label={product.name}
         >
             <div className="relative aspect-[4/3] overflow-hidden rounded-[16px] bg-neutral-100">
                 <Image
-                    src={product.images[0]?.src || "/placeholder.jpg"}
-                    alt={product.images[0]?.alt || product.name}
+                    src={product.thumbnailUrl || "/placeholder.jpg"}
+                    alt={product.name}
                     fill
                     className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
                 />
@@ -23,14 +47,16 @@ function ProductCard({ product }: { product: any }) {
             <h3 className="mt-4 text-xl font-medium text-neutral-900">{product.name}</h3>
             <p className="mt-1 text-sm text-neutral-600">{product.shortDesc}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-                {product.variants.map((v: any) => (
-                    <span
-                        key={v.id}
-                        className="rounded-full border border-black/10 bg-white/70 px-3 py-1 text-xs text-neutral-600 backdrop-blur"
-                    >
-                        {v.label}
-                    </span>
-                ))}
+                {(product.variants || [])
+                    .filter((v: any) => v?.active !== false)
+                    .map((v: any) => (
+                        <span
+                            key={v.id}
+                            className="rounded-full border border-black/10 bg-white/70 px-3 py-1 text-xs text-neutral-600 backdrop-blur"
+                        >
+                            {v.size}
+                        </span>
+                    ))}
             </div>
         </Link>
     );
@@ -57,7 +83,12 @@ type PageProps = {
 };
 
 export default async function SafteriProductsPage({ searchParams }: PageProps) {
-    const safteriProducts = products.filter(p => p.brand === "Safteri");
+    const safteriProducts = await fetchProductsForBrand("safteri");
+
+    const products = (safteriProducts || []).map((p: any) => {
+        const cat = normalizeDbCategory(p?.category);
+        return { ...p, _cat: cat };
+    });
 
     // In Next.js App Router (especially newer versions), `searchParams` may be a Promise.
     // `await` works for both Promises and plain objects.
@@ -72,19 +103,19 @@ export default async function SafteriProductsPage({ searchParams }: PageProps) {
                 ? "frisk"
                 : selectedCategoryRaw.includes("rein")
                     ? "rein"
-                    : selectedCategoryRaw.includes("sylte") || selectedCategoryRaw.includes("gele") || selectedCategoryRaw.includes("saus")
+                    : selectedCategoryRaw.includes("sylte") || selectedCategoryRaw.includes("gele") || selectedCategoryRaw.includes("gelé") || selectedCategoryRaw.includes("saus")
                         ? "sylte"
                         : "";
 
     const showAll = !selectedCategory;
 
-    const saft = safteriProducts.filter(p => p.category === "Safteri - Saft");
-    const frisk = safteriProducts.filter(p => p.category === "Safteri - Frisk");
-    const rein = safteriProducts.filter(p => p.category === "Safteri - Rein");
+    const saft = products.filter((p) => p._cat === "saft");
+    const frisk = products.filter((p) => p._cat === "frisk");
+    const rein = products.filter((p) => p._cat === "rein");
 
-    const sylte = safteriProducts.filter(p => p.category === "Safteri - Sylte");
-    const gele = safteriProducts.filter(p => p.category === "Safteri - Gele");
-    const saus = safteriProducts.filter(p => p.category === "Safteri - Saus");
+    const sylte = products.filter((p) => p._cat === "sylte");
+    const gele = products.filter((p) => p._cat === "gele");
+    const saus = products.filter((p) => p._cat === "saus");
 
     return (
         <main
@@ -172,7 +203,7 @@ export default async function SafteriProductsPage({ searchParams }: PageProps) {
 
                 {!showAll && (
                     <p className="mt-3 text-xs tracking-[0.18em] uppercase text-neutral-600">
-                        Viser: {selectedCategory}
+                        Viser: {selectedCategory === "sylte" ? "Sylte og gelé" : selectedCategory}
                     </p>
                 )}
             </section>

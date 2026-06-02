@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { CSSProperties } from "react";
-import { products } from "@/lib/products";
+import { fetchProductBySlugOrIdForBrand } from "@/lib/productsPublic";
 import { ContactDisplay } from "../../../components/ContactDisplay";
 import { siteContent } from "@/lib/siteContent";
 
@@ -95,16 +95,7 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
         );
     }
 
-    const product = products.find((p) => {
-        const brandOk = String(p.brand ?? "").toLowerCase().includes("safteri");
-        if (!brandOk) return false;
-
-        const id = slugify((p as any).id);
-        const slug = slugify((p as any).slug);
-        const name = slugify((p as any).name);
-
-        return wanted === slug || wanted === id || (!slug && wanted === name);
-    });
+    const product = await fetchProductBySlugOrIdForBrand(wanted, "safteri");
 
     if (!product) {
         return (
@@ -167,18 +158,16 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
         );
     }
 
-    const hero = product.images?.[0];
+    const hero = product.thumbnailUrl
+        ? { src: product.thumbnailUrl, alt: product.name }
+        : null;
 
-    const selectedVariant = product.variants?.find(
-        (v: any) => String(v.id) === selectedVariantId
-    );
+    const selectedVariant = product.variants?.find((v: any) => String(v.id) === selectedVariantId);
 
-    const selectedImage = (selectedVariant as any)?.imageSrc
+    const selectedImage = selectedVariant?.imageUrl
         ? {
-            src: (selectedVariant as any).imageSrc as string,
-            alt:
-                ((selectedVariant as any).imageAlt as string) ||
-                `${product.name} – ${selectedVariant?.label}`,
+            src: selectedVariant.imageUrl as string,
+            alt: `${product.name} – ${selectedVariant.size}`,
         }
         : hero;
 
@@ -243,61 +232,60 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
                             {product.name}
                         </h1>
 
-                        {product.shortDesc && (
+                        {product.shortDescription && (
                             <p className="mt-4 text-sm leading-7 text-neutral-600">
-                                {product.shortDesc}
+                                {product.shortDescription}
                             </p>
                         )}
 
-                        {/* Variants */}
-                        {product.variants?.length ? (
+                        {product.variants?.filter((v: any) => v.active !== false).length ? (
                             <div className="mt-6">
-                                <p className="text-xs tracking-[0.18em] uppercase text-neutral-600">
-                                    Storleikar
-                                </p>
+                                <p className="text-xs tracking-[0.18em] uppercase text-neutral-600">Storleikar</p>
                                 <div className="mt-3 flex flex-wrap gap-2">
-                                    {product.variants.map((v) => {
-                                        const isActive = selectedVariantId
-                                            ? String(v.id) === selectedVariantId
-                                            : String(v.id) === String(product.variants?.[0]?.id);
+                                    {product.variants
+                                        .filter((v: any) => v.active !== false)
+                                        .map((v: any, idx: number) => {
+                                            const isActive = selectedVariantId
+                                                ? String(v.id) === selectedVariantId
+                                                : idx === 0;
 
-                                        return (
-                                            <Link
-                                                key={v.id}
-                                                href={`/safteri/products/${product.slug}?variant=${encodeURIComponent(String(v.id))}`}
-                                                className={
-                                                    "rounded-full border px-3 py-1 text-xs backdrop-blur transition " +
-                                                    (isActive
-                                                        ? "border-[color:var(--accentSoft)] bg-[color:var(--accentSoft)] text-neutral-900"
-                                                        : "border-black/10 bg-white/70 text-neutral-600 hover:bg-white/85")
-                                                }
-                                                aria-label={`Vel ${v.label}`}
-                                            >
-                                                {v.label}
-                                            </Link>
-                                        );
-                                    })}
+                                            return (
+                                                <Link
+                                                    key={v.id}
+                                                    href={`/safteri/products/${product.slug}?variant=${encodeURIComponent(String(v.id))}`}
+                                                    className={
+                                                        "rounded-full border px-3 py-1 text-xs backdrop-blur transition " +
+                                                        (isActive
+                                                            ? "border-[color:var(--accentSoft)] bg-[color:var(--accentSoft)] text-neutral-900"
+                                                            : "border-black/10 bg-white/70 text-neutral-600 hover:bg-white/85")
+                                                    }
+                                                    aria-label={`Vel ${v.size}`}
+                                                >
+                                                    {v.size}
+                                                </Link>
+                                            );
+                                        })}
                                 </div>
                             </div>
                         ) : null}
 
                         {/* Long description */}
-                        {product.longDesc && (
+                        {product.longDescription && (
                             <p className="mt-8 text-sm leading-7 text-neutral-600">
-                                {product.longDesc}
+                                {product.longDescription}
                             </p>
                         )}
 
                         {/* Details / accordions */}
                         <div className="mt-8 space-y-4">
-                            {product.ingredients && (
+                            {product.ingredientsText && (
                                 <details className="group rounded-[18px] border border-black/10 bg-white/60 p-4">
                                     <summary className="cursor-pointer list-none text-sm font-medium text-neutral-800 flex items-center justify-between">
                                         Ingrediensar
                                         <span className="transition group-open:rotate-180">⌄</span>
                                     </summary>
                                     <p className="mt-3 text-sm leading-7 text-neutral-600">
-                                        {product.ingredients}
+                                        {product.ingredientsText}
                                     </p>
                                 </details>
                             )}
@@ -308,8 +296,8 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
                                     <span className="transition group-open:rotate-180">⌄</span>
                                 </summary>
                                 <p className="mt-3 text-sm leading-7 text-neutral-600">
-                                    {product.allergens && product.allergens.length > 0
-                                        ? product.allergens.join(", ")
+                                    {product.allergensText?.trim()
+                                        ? product.allergensText
                                         : "Ingen kjende allergen."}
                                 </p>
                             </details>
@@ -323,13 +311,36 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
                                     <div className="mt-4 overflow-x-auto">
                                         <table className="w-full text-sm text-neutral-600">
                                             <tbody className="divide-y">
-                                                <tr><td>Energi</td><td className="text-right">{product.nutrition.energyKj} kJ / {product.nutrition.energyKcal} kcal</td></tr>
-                                                <tr><td>Feitt</td><td className="text-right">{product.nutrition.fat} g</td></tr>
-                                                <tr><td>– metta feittsyrer</td><td className="text-right">{product.nutrition.saturatedFat} g</td></tr>
-                                                <tr><td>Karbohydrat</td><td className="text-right">{product.nutrition.carbs} g</td></tr>
-                                                <tr><td>– sukkerartar</td><td className="text-right">{product.nutrition.sugars} g</td></tr>
-                                                <tr><td>Protein</td><td className="text-right">{product.nutrition.protein} g</td></tr>
-                                                <tr><td>Salt</td><td className="text-right">{product.nutrition.salt} g</td></tr>
+                                                <tr>
+                                                    <td>Energi</td>
+                                                    <td className="text-right">
+                                                        {product.nutrition?.energyKj ?? "–"} kJ / {product.nutrition?.energyKcal ?? "–"} kcal
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Feitt</td>
+                                                    <td className="text-right">{product.nutrition?.fat ?? "–"} g</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>– metta feittsyrer</td>
+                                                    <td className="text-right">{product.nutrition?.saturatedFat ?? "–"} g</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Karbohydrat</td>
+                                                    <td className="text-right">{product.nutrition?.carbs ?? "–"} g</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>– sukkerartar</td>
+                                                    <td className="text-right">{product.nutrition?.sugars ?? "–"} g</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Protein</td>
+                                                    <td className="text-right">{product.nutrition?.protein ?? "–"} g</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Salt</td>
+                                                    <td className="text-right">{product.nutrition?.salt ?? "–"} g</td>
+                                                </tr>
                                             </tbody>
                                         </table>
                                     </div>
@@ -340,13 +351,14 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
 
                     {/* Image */}
                     <div className="md:col-span-7 lg:col-span-8">
-                        <div className="rounded-[28px] bg-[color:var(--accentSurface)] p-4 ring-1 ring-black/10">
-                            <div className="relative aspect-[16/10] overflow-hidden rounded-[22px] bg-neutral-100">
+                        <div className="mx-auto max-w-[620px] rounded-[28px] bg-[color:var(--accentSurface)] p-4 ring-1 ring-black/10">
+                            <div className="relative aspect-square overflow-hidden rounded-[22px] bg-neutral-100 p-6 md:p-8">
                                 <Image
-                                    src={selectedImage?.src || "/placeholder.jpg"}
+                                    src={selectedImage?.src || "/logoDark.png"}
                                     alt={selectedImage?.alt || product.name}
                                     fill
-                                    className="object-cover"
+                                    className="object-contain"
+                                    sizes="(min-width: 1024px) 620px, (min-width: 768px) 58vw, 100vw"
                                     priority
                                 />
                             </div>

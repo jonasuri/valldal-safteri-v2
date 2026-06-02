@@ -1,12 +1,26 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { CSSProperties } from "react";
-import { products } from "@/lib/products";
+import { fetchProductBySlugOrIdForBrand } from "@/lib/productsPublic";
 
 type PageProps = {
     params: { slug: string } | Promise<{ slug: string }>;
     searchParams?: { variant?: string } | Promise<{ variant?: string }>;
 };
+
+function formatAlcoholPercent(value: unknown) {
+    if (value === undefined || value === null) return "";
+
+    const alcoholPercent = String(value).trim();
+    if (!alcoholPercent) return "";
+
+    return alcoholPercent.includes("%") ? alcoholPercent : `${alcoholPercent} %`;
+}
+
+function formatVariantLabel(variant: any) {
+    const alcoholPercent = formatAlcoholPercent(variant?.alcoholPercent);
+    return alcoholPercent ? `${variant.label} · ${alcoholPercent}` : variant.label;
+}
 
 export default async function BryggeriProductDetailPage({ params, searchParams }: PageProps) {
     const slugify = (value: unknown) => {
@@ -57,16 +71,7 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
         );
     }
 
-    const product = products.find((p) => {
-        const brandOk = String(p.brand ?? "").toLowerCase().includes("bryggeri");
-        if (!brandOk) return false;
-
-        const id = slugify((p as any).id);
-        const slug = slugify((p as any).slug);
-        const name = slugify((p as any).name);
-
-        return wanted === slug || wanted === id || (!slug && wanted === name);
-    });
+    const product = await fetchProductBySlugOrIdForBrand(wanted, "bryggeri");
 
     if (!product) {
         return (
@@ -93,20 +98,31 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
         );
     }
 
-    const hero = product.images?.[0];
+    const hero = product.imageUrl || product.thumbnailUrl || product.image
+        ? {
+            src: product.imageUrl || product.thumbnailUrl || product.image || "/placeholder.jpg",
+            alt: product.name,
+        }
+        : undefined;
 
     const selectedVariant = product.variants?.find((v: any) => String(v.id) === selectedVariantId);
 
-    const selectedImage = (selectedVariant as any)?.imageSrc
+    const selectedImage = selectedVariant?.imageUrl || selectedVariant?.image
         ? {
-            src: (selectedVariant as any).imageSrc as string,
-            alt:
-                ((selectedVariant as any).imageAlt as string) ||
-                `${product.name} – ${selectedVariant?.label}`,
+            src: selectedVariant.imageUrl || selectedVariant.image || hero?.src || "/placeholder.jpg",
+            alt: `${product.name} – ${selectedVariant?.label}`,
         }
         : hero;
 
-    const abv = (product as any).alcohol?.abv;
+    const category = String(product.category || "").toLowerCase();
+    const isBeer = category.includes("øl") || category.includes("ol") || category.includes("beer");
+    const rawAlcoholPercent =
+        (selectedVariant as any)?.alcoholPercent ??
+        (product as any).alcoholPercent ??
+        (product as any).abv ??
+        (product as any).alcohol?.abv ??
+        (product as any).alcohol;
+    const formattedAlcoholPercent = formatAlcoholPercent(rawAlcoholPercent);
 
     return (
         <main
@@ -131,7 +147,9 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
                 <div className="mt-8 grid gap-10 md:grid-cols-12 md:items-start">
                     {/* Text */}
                     <div className="md:col-span-5 lg:col-span-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-neutral-600">Bryggeri</p>
+                        <p className="text-xs uppercase tracking-[0.22em] text-neutral-600">
+                            {isBeer ? "Valldøla" : "Bryggeri"}
+                        </p>
 
                         <h1
                             className="mt-3 text-4xl tracking-tight md:text-5xl"
@@ -144,9 +162,11 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
                             <p className="mt-4 text-sm leading-7 text-neutral-600">{product.shortDesc}</p>
                         )}
 
-                        {(abv || abv === 0) && (
-                            <p className="mt-4 text-xs tracking-[0.18em] uppercase text-neutral-600">{abv}% alc. · 18+</p>
-                        )}
+                        {formattedAlcoholPercent ? (
+                            <p className="mt-4 text-xs tracking-[0.18em] uppercase text-neutral-600">
+                                {formattedAlcoholPercent} alc. · 18+
+                            </p>
+                        ) : null}
 
                         {/* Variants */}
                         {product.variants?.length ? (
@@ -170,7 +190,7 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
                                                 }
                                                 aria-label={`Vel ${v.label}`}
                                             >
-                                                {v.label}
+                                                {formatVariantLabel(v)}
                                             </Link>
                                         );
                                     })}
@@ -202,7 +222,7 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
                                 </summary>
                                 <p className="mt-3 text-sm leading-7 text-neutral-600">
                                     {product.allergens && product.allergens.length > 0
-                                        ? product.allergens.join(", ")
+                                        ? product.allergens
                                         : "Ingen kjende allergen."}
                                 </p>
                             </details>
@@ -256,13 +276,14 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
 
                     {/* Image */}
                     <div className="md:col-span-7 lg:col-span-8">
-                        <div className="rounded-[28px] bg-[color:var(--accentSurface)] p-4 ring-1 ring-black/10">
-                            <div className="relative aspect-[16/10] overflow-hidden rounded-[22px] bg-neutral-100">
+                        <div className="mx-auto max-w-[620px] rounded-[28px] bg-[color:var(--accentSurface)] p-4 ring-1 ring-black/10">
+                            <div className="relative aspect-square overflow-hidden rounded-[22px] bg-neutral-100 p-6 md:p-8">
                                 <Image
                                     src={selectedImage?.src || "/placeholder.jpg"}
                                     alt={selectedImage?.alt || product.name}
                                     fill
-                                    className="object-cover"
+                                    className="object-contain"
+                                    sizes="(min-width: 1024px) 620px, (min-width: 768px) 58vw, 100vw"
                                     priority
                                 />
                             </div>

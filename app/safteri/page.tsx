@@ -10,6 +10,7 @@ import { ContactDisplay } from "../components/ContactDisplay";
 import { db } from "../../lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
+
 export default function SafteriPage() {
     const [heroKicker, setHeroKicker] = useState<string>(siteContent.safteri.hero.kicker);
     const [heroTitleLines, setHeroTitleLines] = useState<string[]>([
@@ -294,21 +295,8 @@ export default function SafteriPage() {
                     </div>
                 </div>
 
-                {/* =========================
-                   UTVAL (ORIGINAL) – BACKUP
-                   (Uncomment when products are live)
-                ========================= */}
-                {/*
                 <div className="mt-8 grid gap-6 md:grid-cols-2">
                     {siteContent.safteri.utval.categories.map((cat, idx) => {
-                        const href = cat.title.toLowerCase().includes("saft")
-                            ? "/safteri/products?category=saft"
-                            : cat.title.toLowerCase().includes("frisk")
-                                ? "/safteri/products?category=frisk"
-                                : cat.title.toLowerCase().includes("rein")
-                                    ? "/safteri/products?category=rein"
-                                    : "/safteri/products?category=sylte";
-
                         let description: string = cat.description;
                         if (idx === 0 && saftDescription.trim().length > 0) {
                             description = saftDescription;
@@ -321,11 +309,14 @@ export default function SafteriPage() {
                         }
 
                         return (
-                            <Link
+                            <div
                                 key={idx}
-                                href={href}
-                                className="group block rounded-[28px] border border-[color:var(--line)] bg-[color:var(--accentSurface)] p-7 transition will-change-transform cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_14px_40px_rgba(0,0,0,0.07)] hover:bg-[color:var(--accentSoft)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/20"
+                                className="relative rounded-[28px] border border-[color:var(--line)] bg-[color:var(--accentSurface)] p-7 opacity-70"
                             >
+                                <div className="absolute right-5 top-5 rounded-full border border-[color:var(--line)] bg-white/70 px-3 py-1 text-[11px] font-medium text-neutral-800">
+                                    Kjem snart
+                                </div>
+
                                 <h3
                                     className="text-2xl tracking-tight md:text-3xl"
                                     style={{ fontFamily: "var(--font-serif)" }}
@@ -333,39 +324,15 @@ export default function SafteriPage() {
                                     {cat.title}
                                 </h3>
                                 <p className="mt-3 text-sm leading-7 text-neutral-700">{description}</p>
-                            </Link>
+
+                                <div className="mt-5 text-xs text-neutral-600">
+                                    Produktsider kjem snart.
+                                </div>
+                            </div>
                         );
                     })}
                 </div>
-                */}
 
-                {/* =========================
-                   UTVAL – COMING SOON (TEMP)
-                ========================= */}
-                <div className="mt-8 grid gap-6 md:grid-cols-2">
-                    {["Saft", "Sylte og gelé", "Frisk", "Rein"].map((title) => (
-                        <div
-                            key={title}
-                            className="relative rounded-[28px] border border-[color:var(--line)] bg-[color:var(--accentSurface)] p-7 opacity-60 grayscale cursor-not-allowed"
-                            aria-disabled="true"
-                        >
-                            <span className="absolute right-5 top-5 rounded-full border border-[color:var(--line)] bg-[color:var(--paper)]/70 px-2 py-0.5 text-[11px] text-neutral-600">
-                                Kjem snart
-                            </span>
-
-                            <h3
-                                className="text-2xl tracking-tight md:text-3xl"
-                                style={{ fontFamily: "var(--font-serif)" }}
-                            >
-                                {title}
-                            </h3>
-
-                            <p className="mt-3 text-sm leading-7 text-neutral-700">
-                                Produktsida kjem snart.
-                            </p>
-                        </div>
-                    ))}
-                </div>
             </section>
 
             {/* Besøk */}

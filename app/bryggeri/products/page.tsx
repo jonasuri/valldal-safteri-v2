@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { products } from "@/lib/products";
+import { fetchProductsForBrand } from "@/lib/productsPublic";
 import type { CSSProperties } from "react";
 
 type PageProps = {
@@ -8,7 +8,7 @@ type PageProps = {
 };
 
 export default async function BryggeriProductsPage({ searchParams }: PageProps) {
-    const bryggeriProducts = products.filter((p) => p.brand === "Bryggeri");
+    const bryggeriProducts = await fetchProductsForBrand("bryggeri");
 
     // In Next.js App Router (especially newer versions), `searchParams` may be a Promise.
     // `await` works for both Promises and plain objects.
@@ -25,8 +25,15 @@ export default async function BryggeriProductsPage({ searchParams }: PageProps) 
 
     const showAll = !selectedCategory;
 
-    const ol = bryggeriProducts.filter((p) => p.category === "Bryggeri - Øl");
-    const sider = bryggeriProducts.filter((p) => p.category === "Bryggeri - Sider");
+    const ol = bryggeriProducts.filter((p) => {
+        const category = String(p.category || "").toLowerCase();
+        return category.includes("øl") || category.includes("ol") || category.includes("beer");
+    });
+
+    const sider = bryggeriProducts.filter((p) => {
+        const category = String(p.category || "").toLowerCase();
+        return category.includes("sider") || category.includes("cider");
+    });
 
     return (
         <main
@@ -117,35 +124,72 @@ export default async function BryggeriProductsPage({ searchParams }: PageProps) 
     );
 }
 
+function isBeerProduct(product: any) {
+    const category = String(product.category || "").toLowerCase();
+    return category.includes("øl") || category.includes("ol") || category.includes("beer");
+}
+
+function formatAlcoholPercent(value: unknown) {
+    if (value === undefined || value === null) return "";
+
+    const alcoholPercent = String(value).trim();
+    if (!alcoholPercent) return "";
+
+    return alcoholPercent.includes("%") ? alcoholPercent : `${alcoholPercent} %`;
+}
+
+function formatVariantLabel(variant: any) {
+    const alcoholPercent = formatAlcoholPercent(variant?.alcoholPercent);
+    return alcoholPercent ? `${variant.label} · ${alcoholPercent}` : variant.label;
+}
+
 function ProductCard({ product }: { product: any }) {
+    const image = product.imageUrl || product.thumbnailUrl || product.image || product.images?.[0]?.src || "/placeholder.jpg";
+    const imageAlt = product.images?.[0]?.alt || product.name;
+    const shortDescription = product.shortDesc || product.shortDescription || product.description;
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const isBeer = isBeerProduct(product);
+    const alcoholPercent = formatAlcoholPercent(
+        product.alcoholPercent ?? product.abv ?? product.alcohol
+    );
+
     return (
         <Link
             href={`/bryggeri/products/${product.slug}`}
             className="group block rounded-[24px] bg-[color:var(--accentSurface)] p-6 ring-1 ring-black/10 transition hover:-translate-y-0.5 hover:shadow-[0_14px_40px_rgba(0,0,0,0.06)] hover:bg-[color:var(--accentSoft)]"
             aria-label={`Opne ${product.name}`}
         >
-            <div className="relative aspect-[4/3] overflow-hidden rounded-[16px] bg-neutral-100">
+            <div className="relative aspect-square overflow-hidden rounded-[16px] bg-neutral-100 p-4">
                 <Image
-                    src={product.images[0]?.src || "/placeholder.jpg"}
-                    alt={product.images[0]?.alt || product.name}
+                    src={image}
+                    alt={imageAlt}
                     fill
-                    className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                    className="object-contain transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 />
             </div>
 
-            <h3 className="mt-4 text-xl font-medium text-neutral-900">{product.name}</h3>
-            <p className="mt-1 text-sm text-neutral-600">{product.shortDesc}</p>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-                {product.variants.map((v: any) => (
-                    <span
-                        key={v.id}
-                        className="rounded-full border border-black/10 bg-white/70 px-3 py-1 text-xs text-neutral-600 backdrop-blur"
-                    >
-                        {v.label}
-                    </span>
-                ))}
+            <div className="mt-4">
+                {isBeer ? (
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">Valldøla</p>
+                ) : null}
+                <h3 className="mt-1 text-xl font-medium text-neutral-900">{product.name}</h3>
+                {alcoholPercent ? <p className="mt-1 text-sm text-neutral-600">{alcoholPercent}</p> : null}
             </div>
+            {shortDescription ? <p className="mt-1 text-sm text-neutral-600">{shortDescription}</p> : null}
+
+            {variants.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {variants.map((v: any) => (
+                        <span
+                            key={v.id}
+                            className="rounded-full border border-black/10 bg-white/70 px-3 py-1 text-xs text-neutral-600 backdrop-blur"
+                        >
+                            {formatVariantLabel(v)}
+                        </span>
+                    ))}
+                </div>
+            ) : null}
         </Link>
     );
 }
