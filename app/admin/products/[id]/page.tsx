@@ -449,7 +449,7 @@ export default function AdminProductEditPage({
                 } = {
                     id: v.id,
                     label: v.label.trim(),
-                    sku: v.sku.trim(),
+                    sku: v.sku.trim().toUpperCase(),
                     price: Number(v.price.trim().replace(",", ".")),
                     active: typeof v.active === "boolean" ? v.active : true,
                 };
@@ -522,7 +522,7 @@ export default function AdminProductEditPage({
                 variants: variants.map((v) => ({
                     ...v,
                     label: v.label.trim(),
-                    sku: v.sku.trim(),
+                    sku: v.sku.trim().toUpperCase(),
                     price: v.price.trim(),
                     alcoholPercent: v.alcoholPercent.trim(),
                     active: typeof v.active === "boolean" ? v.active : true,
@@ -994,7 +994,7 @@ export default function AdminProductEditPage({
                                                                 type="text"
                                                                 value={v.sku}
                                                                 onChange={(e) => {
-                                                                    const val = e.target.value;
+                                                                    const val = e.target.value.toUpperCase();
                                                                     setSaveToast(null);
                                                                     setFieldErrors((prev) => {
                                                                         const next = { ...prev };
