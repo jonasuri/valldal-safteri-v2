@@ -16,7 +16,6 @@ type ProductDoc = {
     category?: string;
     description?: string;
     longDescription?: string;
-    alcoholPercent?: string;
     active?: boolean;
     thumbnailUrl?: string;
     imageUrl?: string;
@@ -162,7 +161,6 @@ export default function AdminProductEditPage({
     const [category, setCategory] = useState("");
     const [description, setDescription] = useState("");
     const [longDescription, setLongDescription] = useState("");
-    const [alcoholPercent, setAlcoholPercent] = useState("");
     const [active, setActive] = useState(true);
     // Thumbnail state
     const [thumbnailUrl, setThumbnailUrl] = useState<string>("");
@@ -218,7 +216,6 @@ export default function AdminProductEditPage({
         category: string;
         description: string;
         longDescription: string;
-        alcoholPercent: string;
         active: boolean;
         thumbnailUrl: string;
         variants: VariantForm[];
@@ -268,7 +265,6 @@ export default function AdminProductEditPage({
                 const loadedCategory = typeof data.category === "string" ? data.category : "";
                 const loadedDescription = typeof data.description === "string" ? data.description : "";
                 const loadedLongDescription = typeof data.longDescription === "string" ? data.longDescription : "";
-                const loadedAlcoholPercent = typeof data.alcoholPercent === "string" ? data.alcoholPercent : "";
                 const loadedActive = typeof data.active === "boolean" ? data.active : true;
                 const loadedThumb =
                     normalizeImageUrl(data.thumbnailUrl) ||
@@ -328,7 +324,6 @@ export default function AdminProductEditPage({
                 setCategory(loadedCategory);
                 setDescription(loadedDescription);
                 setLongDescription(loadedLongDescription);
-                setAlcoholPercent(loadedAlcoholPercent);
                 setActive(loadedActive);
                 setThumbnailUrl(loadedThumb);
                 setVariants(loadedVariants);
@@ -343,7 +338,6 @@ export default function AdminProductEditPage({
                     category: loadedCategory,
                     description: loadedDescription,
                     longDescription: loadedLongDescription,
-                    alcoholPercent: loadedAlcoholPercent,
                     active: loadedActive,
                     thumbnailUrl: loadedThumb,
                     variants: loadedVariants,
@@ -373,6 +367,8 @@ export default function AdminProductEditPage({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [brand]);
 
+    const shouldShowAlcoholPercent = brand === "bryggeri" && (category === "Øl" || category === "Sider");
+
     const hasChanges = useMemo(() => {
         if (!initial) return false;
         const variantsChanged = JSON.stringify(variants) !== JSON.stringify(initial.variants);
@@ -383,7 +379,6 @@ export default function AdminProductEditPage({
             category !== initial.category ||
             description !== initial.description ||
             longDescription !== initial.longDescription ||
-            alcoholPercent !== initial.alcoholPercent ||
             active !== initial.active ||
             thumbnailUrl !== initial.thumbnailUrl ||
             variantsChanged ||
@@ -391,7 +386,7 @@ export default function AdminProductEditPage({
             allergens !== initial.allergens ||
             JSON.stringify(nutrition) !== JSON.stringify(initial.nutrition)
         );
-    }, [initial, name, slug, brand, category, description, longDescription, alcoholPercent, active, thumbnailUrl, variants, ingredients, allergens, nutrition]);
+    }, [initial, name, slug, brand, category, description, longDescription, active, thumbnailUrl, variants, ingredients, allergens, nutrition]);
 
     async function handleSave() {
         if (!productId) return;
@@ -489,7 +484,7 @@ export default function AdminProductEditPage({
                     nextVariant.prices.distributor = Number(v.priceDistributor.trim().replace(",", "."));
                 }
 
-                if (v.alcoholPercent.trim()) {
+                if (shouldShowAlcoholPercent && v.alcoholPercent.trim()) {
                     nextVariant.alcoholPercent = v.alcoholPercent.trim();
                 }
 
@@ -508,7 +503,6 @@ export default function AdminProductEditPage({
                 category: category.trim(),
                 description: description.trim(),
                 longDescription: longDescription.trim(),
-                alcoholPercent: alcoholPercent.trim(),
                 active: !!active,
             };
 
@@ -520,7 +514,7 @@ export default function AdminProductEditPage({
 
             payload.thumbnailUrl = normalizeImageUrl(thumbnailUrl) || deleteField();
             payload.longDescription = longDescription.trim() || deleteField();
-            payload.alcoholPercent = alcoholPercent.trim() || deleteField();
+            // payload.alcoholPercent removed
             payload.variants = nextVariants;
 
             // Product-level fields
@@ -551,7 +545,6 @@ export default function AdminProductEditPage({
                 category: next.category || "",
                 description: next.description || "",
                 longDescription: longDescription.trim(),
-                alcoholPercent: alcoholPercent.trim(),
                 active: !!next.active,
                 thumbnailUrl: thumbnailUrl.trim(),
                 variants: variants.map((v) => ({
@@ -561,7 +554,7 @@ export default function AdminProductEditPage({
                     price: v.price.trim(),
                     priceTrade: v.priceTrade.trim(),
                     priceDistributor: v.priceDistributor.trim(),
-                    alcoholPercent: v.alcoholPercent.trim(),
+                    alcoholPercent: shouldShowAlcoholPercent ? v.alcoholPercent.trim() : "",
                     active: typeof v.active === "boolean" ? v.active : true,
                 })),
                 ingredients: ingredients.trim(),
@@ -1052,20 +1045,22 @@ export default function AdminProductEditPage({
                                                                 <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.sku}</p>
                                                             ) : null}
                                                         </div>
-                                                        <div className="space-y-1">
-                                                            <label className="text-[11px] font-medium text-neutral-700">Alkoholprosent</label>
-                                                            <input
-                                                                type="text"
-                                                                inputMode="decimal"
-                                                                value={v.alcoholPercent}
-                                                                onChange={(e) => {
-                                                                    const val = e.target.value;
-                                                                    setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, alcoholPercent: val } : x)));
-                                                                }}
-                                                                className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
-                                                                placeholder="T.d. 4,7"
-                                                            />
-                                                        </div>
+                                                        {shouldShowAlcoholPercent ? (
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-medium text-neutral-700">Alkoholprosent</label>
+                                                                <input
+                                                                    type="text"
+                                                                    inputMode="decimal"
+                                                                    value={v.alcoholPercent}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, alcoholPercent: val } : x)));
+                                                                    }}
+                                                                    className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                                    placeholder="T.d. 4,7"
+                                                                />
+                                                            </div>
+                                                        ) : null}
 
                                                         <div className="space-y-1">
                                                             <label className="text-[11px] font-medium text-neutral-700">Utsalspris</label>
@@ -1156,23 +1151,7 @@ export default function AdminProductEditPage({
                                                 />
                                             </div>
 
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-neutral-800" htmlFor="prodAlcoholPercent">
-                                                    Alkoholprosent
-                                                </label>
-                                                <input
-                                                    id="prodAlcoholPercent"
-                                                    type="text"
-                                                    inputMode="decimal"
-                                                    value={alcoholPercent}
-                                                    onChange={(e) => setAlcoholPercent(e.target.value)}
-                                                    className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none placeholder:text-neutral-400 focus:border-neutral-800"
-                                                    placeholder="T.d. 4,7"
-                                                />
-                                                <p className="text-[11px] text-neutral-500">
-                                                    Brukast for øl og sider. Skriv til dømes 4,7. Prosentteikn blir lagt til på nettsida.
-                                                </p>
-                                            </div>
+                                            {/* Removed alcoholPercent block */}
                                         </div>
                                     </div>
 
