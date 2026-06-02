@@ -1,5 +1,6 @@
 "use client";
 
+
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState, type CSSProperties } from "react";
@@ -8,6 +9,10 @@ import { db } from "../lib/firebase";
 import { siteContent } from "../lib/siteContent";
 import { OpeningHoursDisplay } from "./components/OpeningHoursDisplay";
 import { ContactDisplay } from "./components/ContactDisplay";
+
+function normalizeImageUrl(value: string) {
+  return value.trim().replace(/&amp;/g, "&");
+}
 
 export default function HomePage() {
   type LandingHeroState = {
@@ -85,9 +90,9 @@ export default function HomePage() {
 
         let images: string[] = [];
         if (Array.isArray(data.landingHeroImages)) {
-          images = data.landingHeroImages.filter(
-            (v: unknown): v is string => typeof v === "string" && v.trim() !== ""
-          );
+          images = data.landingHeroImages
+            .filter((v: unknown): v is string => typeof v === "string" && v.trim() !== "")
+            .map(normalizeImageUrl);
         }
         if (images.length === 0) {
           images = fallbackHero.images;
