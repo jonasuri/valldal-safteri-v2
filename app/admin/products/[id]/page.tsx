@@ -572,6 +572,19 @@ export default function AdminProductEditPage({
                 },
             };
 
+            setName(nextInitial.name);
+            setSlug(nextInitial.slug);
+            setBrand(nextInitial.brand);
+            setCategory(nextInitial.category);
+            setDescription(nextInitial.description);
+            setLongDescription(nextInitial.longDescription);
+            setActive(nextInitial.active);
+            setThumbnailUrl(nextInitial.thumbnailUrl);
+            setVariants(nextInitial.variants);
+            setIngredients(nextInitial.ingredients);
+            setAllergens(nextInitial.allergens);
+            setNutrition(nextInitial.nutrition);
+
             setInitial(nextInitial);
             setSaved(true);
             setSaveToast({ type: "success", message: "Endringar lagra." });
