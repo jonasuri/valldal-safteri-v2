@@ -26,6 +26,11 @@ type ProductDoc = {
         label: string;
         sku: string;
         price: number;
+        prices?: {
+            retail?: number;
+            trade?: number;
+            distributor?: number;
+        };
         alcoholPercent?: string;
         imageUrl?: string;
         active?: boolean;
@@ -165,7 +170,17 @@ export default function AdminProductEditPage({
     const [thumbError, setThumbError] = useState<string | null>(null);
 
     // Variants
-    type VariantForm = { id: string; label: string; sku: string; price: string; alcoholPercent: string; imageUrl?: string; active: boolean };
+    type VariantForm = {
+        id: string;
+        label: string;
+        sku: string;
+        price: string;
+        priceTrade: string;
+        priceDistributor: string;
+        alcoholPercent: string;
+        imageUrl?: string;
+        active: boolean;
+    };
     type NutritionForm = {
         basis: "per_100g" | "per_100ml";
         energyKj: string;
@@ -276,14 +291,16 @@ export default function AdminProductEditPage({
                             id: v.id,
                             label: v.label,
                             sku: v.sku,
-                            price: String(v.price),
+                            price: String(v.prices?.retail ?? v.price),
+                            priceTrade: typeof v.prices?.trade === "number" ? String(v.prices.trade) : "",
+                            priceDistributor: typeof v.prices?.distributor === "number" ? String(v.prices.distributor) : "",
                             alcoholPercent: typeof v.alcoholPercent === "string" ? v.alcoholPercent : "",
                             imageUrl: normalizeImageUrl(v.imageUrl) || undefined,
                             active: typeof v.active === "boolean" ? v.active : true,
                         }));
                 }
                 if (!loadedVariants.length) {
-                    loadedVariants = [{ id: String(Date.now()), label: "", sku: "", price: "", alcoholPercent: "", active: true }];
+                    loadedVariants = [{ id: String(Date.now()), label: "", sku: "", price: "", priceTrade: "", priceDistributor: "", alcoholPercent: "", active: true }];
                 }
 
                 // Product-level fields
@@ -438,11 +455,18 @@ export default function AdminProductEditPage({
             }
 
             const nextVariants = variants.map((v) => {
+                const retailPrice = Number(v.price.trim().replace(",", "."));
+
                 const nextVariant: {
                     id: string;
                     label: string;
                     sku: string;
                     price: number;
+                    prices: {
+                        retail: number;
+                        trade?: number;
+                        distributor?: number;
+                    };
                     alcoholPercent?: string;
                     imageUrl?: string;
                     active: boolean;
@@ -450,9 +474,20 @@ export default function AdminProductEditPage({
                     id: v.id,
                     label: v.label.trim(),
                     sku: v.sku.trim().toUpperCase(),
-                    price: Number(v.price.trim().replace(",", ".")),
+                    price: retailPrice,
+                    prices: {
+                        retail: retailPrice,
+                    },
                     active: typeof v.active === "boolean" ? v.active : true,
                 };
+
+                if (v.priceTrade.trim()) {
+                    nextVariant.prices.trade = Number(v.priceTrade.trim().replace(",", "."));
+                }
+
+                if (v.priceDistributor.trim()) {
+                    nextVariant.prices.distributor = Number(v.priceDistributor.trim().replace(",", "."));
+                }
 
                 if (v.alcoholPercent.trim()) {
                     nextVariant.alcoholPercent = v.alcoholPercent.trim();
@@ -524,6 +559,8 @@ export default function AdminProductEditPage({
                     label: v.label.trim(),
                     sku: v.sku.trim().toUpperCase(),
                     price: v.price.trim(),
+                    priceTrade: v.priceTrade.trim(),
+                    priceDistributor: v.priceDistributor.trim(),
                     alcoholPercent: v.alcoholPercent.trim(),
                     active: typeof v.active === "boolean" ? v.active : true,
                 })),
@@ -618,10 +655,10 @@ export default function AdminProductEditPage({
                             onClick={handleSave}
                             disabled={saving || loading || !hasChanges}
                             className={
-                                "inline-flex items-center justify-center rounded-full bg-neutral-900 px-5 py-2 text-sm text-[color:var(--paper)] disabled:opacity-60 " +
+                                "inline-flex items-center justify-center rounded-full px-5 py-2 text-sm disabled:opacity-60 transition-colors " +
                                 (saving || loading || !hasChanges
-                                    ? ""
-                                    : "hover:bg-neutral-800 hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(0,0,0,0.12)] transition-transform transition-shadow")
+                                    ? "bg-neutral-900 text-[color:var(--paper)]"
+                                    : "bg-emerald-600 text-white hover:bg-emerald-700 hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(0,0,0,0.12)] transition-transform transition-shadow")
                             }
                         >
                             {saving ? "Lagrar …" : hasChanges ? "Lagre endringar" : "Ingenting å lagre"}
@@ -845,7 +882,7 @@ export default function AdminProductEditPage({
                                                 onClick={() => {
                                                     setVariants((prev) => [
                                                         ...prev,
-                                                        { id: String(Date.now()), label: "", sku: "", price: "", alcoholPercent: "", active: true },
+                                                        { id: String(Date.now()), label: "", sku: "", price: "", priceTrade: "", priceDistributor: "", alcoholPercent: "", active: true },
                                                     ]);
                                                 }}
                                                 className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] bg-white px-4 py-2 text-[11px] font-medium text-neutral-800 hover:bg-black/5"
@@ -960,7 +997,7 @@ export default function AdminProductEditPage({
                                                             Slett
                                                         </button>
                                                     </div>
-                                                    <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+                                                    <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
                                                         <div className="space-y-1">
                                                             <label className="text-[11px] font-medium text-neutral-700">Storleik</label>
                                                             <input
@@ -1031,7 +1068,7 @@ export default function AdminProductEditPage({
                                                         </div>
 
                                                         <div className="space-y-1">
-                                                            <label className="text-[11px] font-medium text-neutral-700">Pris</label>
+                                                            <label className="text-[11px] font-medium text-neutral-700">Utsalspris</label>
                                                             <input
                                                                 type="text"
                                                                 inputMode="decimal"
@@ -1057,6 +1094,38 @@ export default function AdminProductEditPage({
                                                             {fieldErrors.variants[v.id]?.price ? (
                                                                 <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.price}</p>
                                                             ) : null}
+                                                        </div>
+
+                                                        <div className="space-y-1">
+                                                            <label className="text-[11px] font-medium text-neutral-700">Retailpris</label>
+                                                            <input
+                                                                type="text"
+                                                                inputMode="decimal"
+                                                                value={v.priceTrade}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    setSaveToast(null);
+                                                                    setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, priceTrade: val } : x)));
+                                                                }}
+                                                                className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                                placeholder="Valfritt"
+                                                            />
+                                                        </div>
+
+                                                        <div className="space-y-1">
+                                                            <label className="text-[11px] font-medium text-neutral-700">Grossistpris</label>
+                                                            <input
+                                                                type="text"
+                                                                inputMode="decimal"
+                                                                value={v.priceDistributor}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    setSaveToast(null);
+                                                                    setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, priceDistributor: val } : x)));
+                                                                }}
+                                                                className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                                placeholder="Valfritt"
+                                                            />
                                                         </div>
                                                     </div>
                                                 </div>

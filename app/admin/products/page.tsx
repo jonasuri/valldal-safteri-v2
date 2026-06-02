@@ -67,7 +67,15 @@ export default function AdminProductsPage() {
     function updateVariantLocalAndPersist(
         productId: string,
         variantId: string,
-        patch: { price?: number; active?: boolean }
+        patch: {
+            price?: number;
+            prices?: {
+                retail?: number;
+                trade?: number;
+                distributor?: number;
+            };
+            active?: boolean;
+        }
     ) {
         // IMPORTANT: On this page, `listenToProducts` does not guarantee that `product.variants`
         // is included. Using it can wipe variants in Firestore. We only persist after variants
@@ -506,24 +514,34 @@ export default function AdminProductsPage() {
                                                                     idx
                                                                 );
                                                                 const key = `${product.id}:${variantId}`;
+                                                                const tradeKey = `${key}:trade`;
+                                                                const distributorKey = `${key}:distributor`;
                                                                 const draftValue =
                                                                     variantDraft[key] ??
-                                                                    (variant.price != null
-                                                                        ? String(variant.price)
-                                                                        : "");
+                                                                    (variant?.prices?.retail != null
+                                                                        ? String(variant.prices.retail)
+                                                                        : variant.price != null
+                                                                            ? String(variant.price)
+                                                                            : "");
+                                                                const draftTradeValue =
+                                                                    variantDraft[tradeKey] ??
+                                                                    (variant?.prices?.trade != null ? String(variant.prices.trade) : "");
+                                                                const draftDistributorValue =
+                                                                    variantDraft[distributorKey] ??
+                                                                    (variant?.prices?.distributor != null ? String(variant.prices.distributor) : "");
                                                                 const errorMsg = variantErrors[key];
 
                                                                 function onPriceChange(
-                                                                    e: React.ChangeEvent<HTMLInputElement>
+                                                                    fieldKey: string,
+                                                                    value: string
                                                                 ) {
-                                                                    const val = e.target.value;
                                                                     setVariantDraft((d) => ({
                                                                         ...d,
-                                                                        [key]: val,
+                                                                        [fieldKey]: value,
                                                                     }));
                                                                     setVariantDirty((d) => ({
                                                                         ...d,
-                                                                        [key]: true,
+                                                                        [fieldKey]: true,
                                                                     }));
                                                                     setVariantErrors((errs) => {
                                                                         const copy = { ...errs };
@@ -533,16 +551,44 @@ export default function AdminProductsPage() {
                                                                 }
 
                                                                 function onPriceSave() {
-                                                                    const parsed = parsePrice(
-                                                                        variantDraft[key] ?? ""
-                                                                    );
-                                                                    if (parsed === null) {
+                                                                    const parsedRetail = parsePrice(draftValue);
+                                                                    const parsedTrade = draftTradeValue.trim() ? parsePrice(draftTradeValue) : null;
+                                                                    const parsedDistributor = draftDistributorValue.trim() ? parsePrice(draftDistributorValue) : null;
+
+                                                                    if (parsedRetail === null) {
                                                                         setVariantErrors((errs) => ({
                                                                             ...errs,
-                                                                            [key]: "Pris må vere eit tal",
+                                                                            [key]: "Utsalspris må vere eit tal",
                                                                         }));
                                                                         return;
                                                                     }
+
+                                                                    if (draftTradeValue.trim() && parsedTrade === null) {
+                                                                        setVariantErrors((errs) => ({
+                                                                            ...errs,
+                                                                            [key]: "Retailpris må vere eit tal",
+                                                                        }));
+                                                                        return;
+                                                                    }
+
+                                                                    if (draftDistributorValue.trim() && parsedDistributor === null) {
+                                                                        setVariantErrors((errs) => ({
+                                                                            ...errs,
+                                                                            [key]: "Grossistpris må vere eit tal",
+                                                                        }));
+                                                                        return;
+                                                                    }
+
+                                                                    const prices: {
+                                                                        retail: number;
+                                                                        trade?: number;
+                                                                        distributor?: number;
+                                                                    } = {
+                                                                        retail: parsedRetail,
+                                                                    };
+
+                                                                    if (parsedTrade !== null) prices.trade = parsedTrade;
+                                                                    if (parsedDistributor !== null) prices.distributor = parsedDistributor;
 
                                                                     setVariantErrors((errs) => {
                                                                         const copy = { ...errs };
@@ -552,11 +598,13 @@ export default function AdminProductsPage() {
                                                                     setVariantDirty((d) => ({
                                                                         ...d,
                                                                         [key]: false,
+                                                                        [tradeKey]: false,
+                                                                        [distributorKey]: false,
                                                                     }));
                                                                     updateVariantLocalAndPersist(
                                                                         product.id,
                                                                         variantId,
-                                                                        { price: parsed }
+                                                                        { price: parsedRetail, prices }
                                                                     );
                                                                 }
 
@@ -586,20 +634,37 @@ export default function AdminProductsPage() {
                                                                         </div>
 
                                                                         <div className="flex flex-col items-end gap-1">
-                                                                            <input
-                                                                                type="text"
-                                                                                className="w-[80px] rounded border border-[color:var(--line)] px-2 py-1 text-right text-[11px] text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-neutral-800"
-                                                                                value={draftValue}
-                                                                                onChange={onPriceChange}
-                                                                                aria-invalid={
-                                                                                    errorMsg ? "true" : "false"
-                                                                                }
-                                                                                aria-describedby={
-                                                                                    errorMsg
-                                                                                        ? `${key}-error`
-                                                                                        : undefined
-                                                                                }
-                                                                            />
+                                                                            <div className="grid grid-cols-3 gap-1">
+                                                                                <label className="flex flex-col gap-1 text-[10px] text-neutral-500">
+                                                                                    Utsal
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        className="w-[74px] rounded border border-[color:var(--line)] px-2 py-1 text-right text-[11px] text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                                                        value={draftValue}
+                                                                                        onChange={(e) => onPriceChange(key, e.target.value)}
+                                                                                        aria-invalid={errorMsg ? "true" : "false"}
+                                                                                        aria-describedby={errorMsg ? `${key}-error` : undefined}
+                                                                                    />
+                                                                                </label>
+                                                                                <label className="flex flex-col gap-1 text-[10px] text-neutral-500">
+                                                                                    Retail
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        className="w-[74px] rounded border border-[color:var(--line)] px-2 py-1 text-right text-[11px] text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                                                        value={draftTradeValue}
+                                                                                        onChange={(e) => onPriceChange(tradeKey, e.target.value)}
+                                                                                    />
+                                                                                </label>
+                                                                                <label className="flex flex-col gap-1 text-[10px] text-neutral-500">
+                                                                                    Grossist
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        className="w-[74px] rounded border border-[color:var(--line)] px-2 py-1 text-right text-[11px] text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                                                        value={draftDistributorValue}
+                                                                                        onChange={(e) => onPriceChange(distributorKey, e.target.value)}
+                                                                                    />
+                                                                                </label>
+                                                                            </div>
                                                                             {errorMsg && (
                                                                                 <p
                                                                                     id={`${key}-error`}
@@ -611,8 +676,13 @@ export default function AdminProductsPage() {
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={onPriceSave}
-                                                                                disabled={!variantDirty[key]}
-                                                                                className="rounded-full border border-[color:var(--line)] px-3 py-1 text-[11px] text-neutral-700 transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                                disabled={!variantDirty[key] && !variantDirty[tradeKey] && !variantDirty[distributorKey]}
+                                                                                className={
+                                                                                    "rounded-full border px-3 py-1 text-[11px] transition disabled:cursor-not-allowed disabled:opacity-40 " +
+                                                                                    (variantDirty[key] || variantDirty[tradeKey] || variantDirty[distributorKey]
+                                                                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                                                                        : "border-[color:var(--line)] text-neutral-700 hover:bg-black/5")
+                                                                                }
                                                                             >
                                                                                 Lagre
                                                                             </button>
