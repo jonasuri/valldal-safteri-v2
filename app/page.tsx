@@ -30,7 +30,7 @@ export default function HomePage() {
     kicker: siteContent.landing.hero.kicker,
     title: siteContent.landing.hero.titleLines.join(" "),
     subtitle: siteContent.landing.hero.subtitle,
-    images: [siteContent.landing.hero.image.src],
+    images: [],
     words: siteContent.landing.hero.mantra
       .split("·")
       .map((w) => w.trim())
@@ -95,7 +95,7 @@ export default function HomePage() {
             .map(normalizeImageUrl);
         }
         if (images.length === 0) {
-          images = fallbackHero.images;
+          images = [];
         }
 
         let words: string[] = fallbackHero.words;
@@ -146,7 +146,7 @@ export default function HomePage() {
   }, []);
 
   // Vel dagleg hero-bilete basert på dato
-  let heroImageSrc = hero.images[0];
+  let heroImageSrc = hero.images[0] ?? "";
   if (hero.images.length > 1) {
     const today = new Date();
     const startOfYear = new Date(today.getFullYear(), 0, 0);
@@ -154,7 +154,7 @@ export default function HomePage() {
     const oneDay = 1000 * 60 * 60 * 24;
     const dayOfYear = Math.floor(diff / oneDay);
     const index = dayOfYear % hero.images.length;
-    heroImageSrc = hero.images[index] ?? fallbackHero.images[0];
+    heroImageSrc = hero.images[index] ?? "";
   }
 
   const displayWords =
@@ -286,17 +286,30 @@ export default function HomePage() {
 
               {/* Image */}
               <div className="relative aspect-[16/11]">
-                <Image
-                  src={heroImageSrc}
-                  alt={siteContent.landing.hero.image.alt}
-                  fill
-                  priority
-                  draggable={false}
-                  onContextMenu={(e) => e.preventDefault()}
-                  onDragStart={(e) => e.preventDefault()}
-                  className="object-cover saturate-[0.92] contrast-[0.98] select-none"
-                  style={{ objectPosition: "50% 66%" }}
-                />
+                {heroImageSrc ? (
+                  <Image
+                    src={heroImageSrc}
+                    alt={siteContent.landing.hero.image.alt}
+                    fill
+                    priority
+                    draggable={false}
+                    onContextMenu={(e) => e.preventDefault()}
+                    onDragStart={(e) => e.preventDefault()}
+                    className="object-cover saturate-[0.92] contrast-[0.98] select-none"
+                    style={{ objectPosition: "50% 66%" }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 grid place-items-center bg-neutral-50">
+                    <Image
+                      src="/logoDark.png"
+                      alt="Valldal Safteri"
+                      width={180}
+                      height={48}
+                      priority
+                      className="h-auto w-36 opacity-20 md:w-44"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Prevent right-click save (best-effort; screenshots still possible) */}

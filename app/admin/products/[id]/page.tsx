@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { db, storage } from "@/lib/firebase";
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
-import { deleteField, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { deleteDoc, deleteField, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 
 type ProductDoc = {
     name?: string;
@@ -137,6 +137,7 @@ export default function AdminProductEditPage({
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [saved, setSaved] = useState(false);
 
@@ -557,6 +558,36 @@ export default function AdminProductEditPage({
         }
     }
 
+    async function handleDeleteProduct() {
+        if (!productId || deleting) return;
+
+        const firstConfirm = window.confirm(
+            `Slette produktet "${name || "utan namn"}"? Dette kan ikkje angrast.`
+        );
+        if (!firstConfirm) return;
+
+        const secondConfirm = window.confirm(
+            "Er du heilt sikker? Produktet blir sletta frå admin og frå offentlege produktsider. Bilete i Storage blir ikkje automatisk sletta."
+        );
+        if (!secondConfirm) return;
+
+        setDeleting(true);
+        setError(null);
+        setSaveToast(null);
+
+        try {
+            const ref = doc(db, "products", productId);
+            await deleteDoc(ref);
+            window.location.href = "/admin/products";
+        } catch (err) {
+            console.error(err);
+            const msg = err instanceof Error ? err.message : "Kunne ikkje slette produktet.";
+            setError(msg);
+            setSaveToast({ type: "error", message: msg });
+            setDeleting(false);
+        }
+    }
+
     return (
         <main className="min-h-screen bg-[color:var(--paper)] text-neutral-900">
             <div className="mx-auto max-w-6xl px-4 py-10 md:py-14">
@@ -594,6 +625,14 @@ export default function AdminProductEditPage({
                             }
                         >
                             {saving ? "Lagrar …" : hasChanges ? "Lagre endringar" : "Ingenting å lagre"}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleDeleteProduct}
+                            disabled={deleting || loading || saving}
+                            className="inline-flex items-center justify-center rounded-full border border-red-200 bg-red-50 px-5 py-2 text-sm text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {deleting ? "Slettar …" : "Slett produkt"}
                         </button>
                         {saveToast ? (
                             <div
@@ -1239,7 +1278,16 @@ export default function AdminProductEditPage({
                                         </div>
                                     </div>
 
-                                    <div className="flex flex-wrap items-center justify-end gap-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={handleDeleteProduct}
+                                            disabled={deleting || loading || saving}
+                                            className="inline-flex items-center justify-center rounded-full border border-red-200 bg-red-50 px-5 py-2 text-sm text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {deleting ? "Slettar …" : "Slett produkt"}
+                                        </button>
+
                                         {saved && (
                                             <div className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-[11px] text-emerald-700">
                                                 Endringar lagra.
