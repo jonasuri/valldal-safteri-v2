@@ -132,6 +132,15 @@ function getCategoryOptions(brand: "safteri" | "bryggeri"): string[] {
         : ([...SAFT_CATEGORY_OPTIONS] as unknown as string[]);
 }
 
+function getDefaultAllergens(brand: ProductDoc["brand"], category: string) {
+    if (brand === "bryggeri") {
+        if (category === "Øl") return "Gluten";
+        if (category === "Sider") return "Sulfitt";
+    }
+
+    return "Ingen kjende allergen";
+}
+
 export default function AdminProductEditPage({
     params,
 }: {
@@ -301,7 +310,10 @@ export default function AdminProductEditPage({
 
                 // Product-level fields
                 const loadedIngredients = typeof data.ingredients === "string" ? data.ingredients : "";
-                const loadedAllergens = typeof data.allergens === "string" ? data.allergens : "";
+                const loadedAllergens =
+                    typeof data.allergens === "string" && data.allergens.trim().length > 0
+                        ? data.allergens
+                        : getDefaultAllergens(loadedBrand, loadedCategory);
 
                 const rawNutrition = (data.nutrition && typeof data.nutrition === "object") ? data.nutrition : undefined;
                 const loadedNutrition: NutritionForm = {
@@ -366,6 +378,15 @@ export default function AdminProductEditPage({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [brand]);
+
+    useEffect(() => {
+        const defaultAllergens = getDefaultAllergens(brand || "safteri", category);
+        const knownDefaults = ["Ingen kjende allergen", "Gluten", "Sulfitt"];
+
+        if (!allergens.trim() || knownDefaults.includes(allergens.trim())) {
+            setAllergens(defaultAllergens);
+        }
+    }, [brand, category]);
 
     const shouldShowAlcoholPercent = brand === "bryggeri" && (category === "Øl" || category === "Sider");
 

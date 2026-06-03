@@ -270,6 +270,13 @@ export default function AdminProductsPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
+                        <Link
+                            href="/admin/prices"
+                            className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700 transition hover:bg-emerald-100"
+                        >
+                            Prisjustering →
+                        </Link>
+
                         <button
                             type="button"
                             onClick={handleAddProduct}
