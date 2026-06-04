@@ -79,6 +79,7 @@ function getProductCardImage(product: any) {
 function ProductCard({ product }: { product: any }) {
     const displayVariants = getDisplayVariants(product);
     const imageSrc = getProductCardImage(product);
+    const badgeText = String(product.badgeText || "").trim();
     return (
         <Link
             href={`/safteri/products/${product.slug}`}
@@ -86,6 +87,11 @@ function ProductCard({ product }: { product: any }) {
             aria-label={product.name}
         >
             <div className="relative aspect-[4/3] overflow-hidden rounded-[16px] bg-neutral-100">
+                {badgeText ? (
+                    <div className="absolute left-3 top-3 z-10 rounded-full border border-[color:var(--accentSoft)] bg-[color:var(--paper)] px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-neutral-800">
+                        {badgeText}
+                    </div>
+                ) : null}
                 <Image
                     src={imageSrc}
                     alt={product.name}

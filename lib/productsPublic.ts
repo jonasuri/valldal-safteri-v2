@@ -90,6 +90,7 @@ export type FullProduct = {
     allergensText?: string;
 
     dilutionRatio?: string;
+    badgeText?: string;
 
     nutrition?: NutritionPer100;
 
@@ -229,6 +230,7 @@ function mapProduct(id: string, data: DocumentData): FullProduct | null {
         allergensText: asString(data.allergensText) ?? asString(data.allergens) ?? undefined,
 
         dilutionRatio: asString(data.dilutionRatio) ?? undefined,
+        badgeText: asString(data.badgeText) ?? undefined,
 
         nutrition: mapNutrition(data.nutrition),
 

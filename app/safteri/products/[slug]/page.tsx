@@ -202,6 +202,7 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
         defaultVariant;
     const selectedVariantIdResolved = selectedVariant ? String(selectedVariant.id) : "";
     const dilutionRatio = (product as any).dilutionRatio?.trim?.() || "";
+    const badgeText = (product as any).badgeText?.trim?.() || "";
 
     const selectedImage = selectedVariant?.imageUrl
         ? {
@@ -401,6 +402,11 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
                     <div className="order-1 md:order-2 md:col-span-7 lg:col-span-8">
                         <div className="mx-auto max-w-[620px] rounded-[28px] bg-[color:var(--accentSurface)] p-4 ring-1 ring-black/10">
                             <div className="relative aspect-square overflow-hidden rounded-[22px] bg-neutral-100 p-6 md:p-8">
+                                {badgeText ? (
+                                    <div className="absolute left-4 top-4 z-10 rounded-full border border-[color:var(--accentSoft)] bg-[color:var(--accentSoft)] px-3 py-1 text-xs font-semibold tracking-[0.08em] text-neutral-800 backdrop-blur">
+                                        {badgeText}
+                                    </div>
+                                ) : null}
                                 <Image
                                     src={selectedImage?.src || "/logoDark.png"}
                                     alt={selectedImage?.alt || product.name}

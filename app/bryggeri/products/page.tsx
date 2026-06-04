@@ -192,6 +192,7 @@ function getProductCardImage(product: any) {
 
 function ProductCard({ product }: { product: any }) {
     const image = getProductCardImage(product);
+    const badgeText = String(product.badgeText || "").trim();
     const imageAlt = product.images?.[0]?.alt || product.name;
     const shortDescription = product.shortDesc || product.shortDescription || product.description;
     const variants = getDisplayVariants(product);
@@ -207,6 +208,11 @@ function ProductCard({ product }: { product: any }) {
             aria-label={`Opne ${product.name}`}
         >
             <div className="relative aspect-square overflow-hidden rounded-[16px] bg-neutral-100 p-4">
+                {badgeText ? (
+                    <div className="absolute left-3 top-3 z-10 rounded-full border border-[color:var(--accentSoft)] bg-[color:var(--paper)] px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-neutral-800">
+                        {badgeText}
+                    </div>
+                ) : null}
                 <Image
                     src={image}
                     alt={imageAlt}

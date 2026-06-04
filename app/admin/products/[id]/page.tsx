@@ -39,6 +39,7 @@ type ProductDoc = {
     ingredients?: string;
     allergens?: string;
     dilutionRatio?: string;
+    badgeText?: string;
     nutrition?: {
         basis?: "per_100g" | "per_100ml";
         energyKj?: string;
@@ -229,6 +230,7 @@ export default function AdminProductEditPage({
     const [ingredients, setIngredients] = useState("");
     const [allergens, setAllergens] = useState("");
     const [dilutionRatio, setDilutionRatio] = useState("");
+    const [badgeText, setBadgeText] = useState("");
     const [nutrition, setNutrition] = useState<NutritionForm>({
         basis: "per_100g",
         energyKj: "",
@@ -256,6 +258,7 @@ export default function AdminProductEditPage({
         ingredients: string;
         allergens: string;
         dilutionRatio: string;
+        badgeText: string;
         nutrition: NutritionForm;
     } | null>(null);
 
@@ -346,6 +349,7 @@ export default function AdminProductEditPage({
                         ? data.allergens
                         : getDefaultAllergens(loadedBrand, loadedCategory);
                 const loadedDilutionRatio = typeof data.dilutionRatio === "string" ? data.dilutionRatio : "";
+                const loadedBadgeText = typeof data.badgeText === "string" ? data.badgeText : "";
 
                 const rawNutrition = (data.nutrition && typeof data.nutrition === "object") ? data.nutrition : undefined;
                 const loadedNutrition: NutritionForm = {
@@ -375,6 +379,7 @@ export default function AdminProductEditPage({
                 setIngredients(loadedIngredients);
                 setAllergens(loadedAllergens);
                 setDilutionRatio(loadedDilutionRatio);
+                setBadgeText(loadedBadgeText);
                 setNutrition(loadedNutrition);
 
                 setInitial({
@@ -391,6 +396,7 @@ export default function AdminProductEditPage({
                     ingredients: loadedIngredients,
                     allergens: loadedAllergens,
                     dilutionRatio: loadedDilutionRatio,
+                    badgeText: loadedBadgeText,
                     nutrition: loadedNutrition,
                 });
             } catch (err) {
@@ -444,9 +450,10 @@ export default function AdminProductEditPage({
             ingredients !== initial.ingredients ||
             allergens !== initial.allergens ||
             dilutionRatio !== initial.dilutionRatio ||
+            badgeText !== initial.badgeText ||
             JSON.stringify(nutrition) !== JSON.stringify(initial.nutrition)
         );
-    }, [initial, name, slug, brand, category, description, longDescription, active, defaultVariantId, thumbnailUrl, variants, ingredients, allergens, dilutionRatio, nutrition]);
+    }, [initial, name, slug, brand, category, description, longDescription, active, defaultVariantId, thumbnailUrl, variants, ingredients, allergens, dilutionRatio, badgeText, nutrition]);
 
     async function handleSave() {
         if (!productId) return;
@@ -588,6 +595,7 @@ export default function AdminProductEditPage({
             payload.dilutionRatio = shouldShowDilutionRatio
                 ? (dilutionRatio.trim() || deleteField())
                 : deleteField();
+            payload.badgeText = badgeText.trim() || deleteField();
 
             const nextNutrition = {
                 basis: nutrition.basis,
@@ -629,6 +637,7 @@ export default function AdminProductEditPage({
                 ingredients: ingredients.trim(),
                 allergens: allergens.trim(),
                 dilutionRatio: shouldShowDilutionRatio ? dilutionRatio.trim() : "",
+                badgeText: badgeText.trim(),
                 nutrition: {
                     basis: nutrition.basis,
                     energyKj: nutrition.energyKj.trim(),
@@ -655,6 +664,7 @@ export default function AdminProductEditPage({
             setIngredients(nextInitial.ingredients);
             setAllergens(nextInitial.allergens);
             setDilutionRatio(nextInitial.dilutionRatio);
+            setBadgeText(nextInitial.badgeText);
             setNutrition(nextInitial.nutrition);
 
             setInitial(nextInitial);
@@ -1327,6 +1337,22 @@ export default function AdminProductEditPage({
                                                 </p>
                                             </div>
                                         ) : null}
+                                        <div className="mt-4 space-y-1">
+                                            <label className="text-xs font-medium text-neutral-800" htmlFor="prodBadgeText">
+                                                Produktbadge
+                                            </label>
+                                            <input
+                                                id="prodBadgeText"
+                                                type="text"
+                                                value={badgeText}
+                                                onChange={(e) => setBadgeText(e.target.value)}
+                                                className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                placeholder="T.d. 50 % mindre sukker"
+                                            />
+                                            <p className="text-[11px] text-neutral-500">
+                                                Vist som badge på produktkort og produktside når feltet er fylt ut.
+                                            </p>
+                                        </div>
 
                                         <div className="mt-6">
                                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
