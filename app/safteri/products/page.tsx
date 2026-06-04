@@ -29,7 +29,56 @@ function normalizeDbCategory(value: unknown): "saft" | "sylte" | "gele" | "saus"
     return "";
 }
 
+function getVariantLabel(variant: any) {
+    return String(variant?.size ?? variant?.label ?? "").trim();
+}
+
+function getVariantSortValue(variant: any) {
+    const label = getVariantLabel(variant).toLowerCase().replace(",", ".");
+    const match = label.match(/([0-9]+(?:\.[0-9]+)?)\s*(ml|l|g|kg)/i);
+
+    if (!match) return Number.MAX_SAFE_INTEGER;
+
+    const value = Number(match[1]);
+    const unit = match[2].toLowerCase();
+
+    if (!Number.isFinite(value)) return Number.MAX_SAFE_INTEGER;
+
+    if (unit === "l") return value * 1000;
+    if (unit === "ml") return value;
+    if (unit === "kg") return value * 1000;
+    if (unit === "g") return value;
+
+    return Number.MAX_SAFE_INTEGER;
+}
+
+function sortVariantsBySize(variants: any[] = []) {
+    return [...variants].sort((a, b) => {
+        const sizeCompare = getVariantSortValue(a) - getVariantSortValue(b);
+        if (sizeCompare !== 0) return sizeCompare;
+        return getVariantLabel(a).localeCompare(getVariantLabel(b), "nb");
+    });
+}
+
+function getDisplayVariants(product: any) {
+    const activeVariants = sortVariantsBySize((product.variants || []).filter((v: any) => v?.active !== false));
+    const defaultVariant = activeVariants.find((v: any) => String(v.id) === String(product.defaultVariantId));
+
+    if (!defaultVariant) return activeVariants;
+
+    return [defaultVariant, ...activeVariants.filter((v: any) => String(v.id) !== String(defaultVariant.id))];
+}
+
+function getProductCardImage(product: any) {
+    const activeVariants = sortVariantsBySize((product.variants || []).filter((v: any) => v?.active !== false));
+    const defaultVariant = activeVariants.find((v: any) => String(v.id) === String(product.defaultVariantId));
+
+    return defaultVariant?.imageUrl || product.thumbnailUrl || "/placeholder.jpg";
+}
+
 function ProductCard({ product }: { product: any }) {
+    const displayVariants = getDisplayVariants(product);
+    const imageSrc = getProductCardImage(product);
     return (
         <Link
             href={`/safteri/products/${product.slug}`}
@@ -38,7 +87,7 @@ function ProductCard({ product }: { product: any }) {
         >
             <div className="relative aspect-[4/3] overflow-hidden rounded-[16px] bg-neutral-100">
                 <Image
-                    src={product.thumbnailUrl || "/placeholder.jpg"}
+                    src={imageSrc}
                     alt={product.name}
                     fill
                     className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
@@ -47,16 +96,19 @@ function ProductCard({ product }: { product: any }) {
             <h3 className="mt-4 text-xl font-medium text-neutral-900">{product.name}</h3>
             <p className="mt-1 text-sm text-neutral-600">{product.shortDesc}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-                {(product.variants || [])
-                    .filter((v: any) => v?.active !== false)
-                    .map((v: any) => (
-                        <span
-                            key={v.id}
-                            className="rounded-full border border-black/10 bg-white/70 px-3 py-1 text-xs text-neutral-600 backdrop-blur"
-                        >
-                            {v.size}
-                        </span>
-                    ))}
+                {displayVariants.map((v: any) => (
+                    <span
+                        key={v.id}
+                        className={
+                            "rounded-full border px-3 py-1 text-xs backdrop-blur " +
+                            (String(v.id) === String(product.defaultVariantId)
+                                ? "border-[color:var(--accentSoft)] bg-[color:var(--accentSoft)] text-neutral-900"
+                                : "border-black/10 bg-white/70 text-neutral-600")
+                        }
+                    >
+                        {getVariantLabel(v)}
+                    </span>
+                ))}
             </div>
         </Link>
     );

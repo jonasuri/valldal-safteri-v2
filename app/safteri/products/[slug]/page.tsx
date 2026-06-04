@@ -10,6 +10,37 @@ type PageProps = {
     searchParams?: { variant?: string } | Promise<{ variant?: string }>;
 };
 
+function getVariantLabel(variant: any) {
+    return String(variant?.size ?? variant?.label ?? "").trim();
+}
+
+function getVariantSortValue(variant: any) {
+    const label = getVariantLabel(variant).toLowerCase().replace(",", ".");
+    const match = label.match(/([0-9]+(?:\.[0-9]+)?)\s*(ml|l|g|kg)/i);
+
+    if (!match) return Number.MAX_SAFE_INTEGER;
+
+    const value = Number(match[1]);
+    const unit = match[2].toLowerCase();
+
+    if (!Number.isFinite(value)) return Number.MAX_SAFE_INTEGER;
+
+    if (unit === "l") return value * 1000;
+    if (unit === "ml") return value;
+    if (unit === "kg") return value * 1000;
+    if (unit === "g") return value;
+
+    return Number.MAX_SAFE_INTEGER;
+}
+
+function sortVariantsBySize(variants: any[] = []) {
+    return [...variants].sort((a, b) => {
+        const sizeCompare = getVariantSortValue(a) - getVariantSortValue(b);
+        if (sizeCompare !== 0) return sizeCompare;
+        return getVariantLabel(a).localeCompare(getVariantLabel(b), "nb");
+    });
+}
+
 export default async function SafteriProductDetailPage({ params, searchParams }: PageProps) {
     const slugify = (value: unknown) => {
         const s = String(value ?? "")
@@ -162,12 +193,19 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
         ? { src: product.thumbnailUrl, alt: product.name }
         : null;
 
-    const selectedVariant = product.variants?.find((v: any) => String(v.id) === selectedVariantId);
+    const activeVariants = sortVariantsBySize((product.variants ?? []).filter((v: any) => v.active !== false));
+    const defaultVariant =
+        activeVariants.find((v: any) => String(v.id) === String((product as any).defaultVariantId)) ??
+        activeVariants[0];
+    const selectedVariant =
+        activeVariants.find((v: any) => String(v.id) === selectedVariantId) ??
+        defaultVariant;
+    const selectedVariantIdResolved = selectedVariant ? String(selectedVariant.id) : "";
 
     const selectedImage = selectedVariant?.imageUrl
         ? {
             src: selectedVariant.imageUrl as string,
-            alt: `${product.name} – ${selectedVariant.size}`,
+            alt: `${product.name} – ${getVariantLabel(selectedVariant)}`,
         }
         : hero;
 
@@ -220,7 +258,7 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
 
                 <div className="mt-8 grid gap-10 md:grid-cols-12 md:items-start">
                     {/* Text */}
-                    <div className="md:col-span-5 lg:col-span-4">
+                    <div className="order-2 md:order-1 md:col-span-5 lg:col-span-4">
                         <p className="text-xs uppercase tracking-[0.22em] text-neutral-600">
                             Safteri
                         </p>
@@ -238,33 +276,29 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
                             </p>
                         )}
 
-                        {product.variants?.filter((v: any) => v.active !== false).length ? (
+                        {activeVariants.length ? (
                             <div className="mt-6">
                                 <p className="text-xs tracking-[0.18em] uppercase text-neutral-600">Storleikar</p>
                                 <div className="mt-3 flex flex-wrap gap-2">
-                                    {product.variants
-                                        .filter((v: any) => v.active !== false)
-                                        .map((v: any, idx: number) => {
-                                            const isActive = selectedVariantId
-                                                ? String(v.id) === selectedVariantId
-                                                : idx === 0;
+                                    {activeVariants.map((v: any) => {
+                                        const isActive = String(v.id) === selectedVariantIdResolved;
 
-                                            return (
-                                                <Link
-                                                    key={v.id}
-                                                    href={`/safteri/products/${product.slug}?variant=${encodeURIComponent(String(v.id))}`}
-                                                    className={
-                                                        "rounded-full border px-3 py-1 text-xs backdrop-blur transition " +
-                                                        (isActive
-                                                            ? "border-[color:var(--accentSoft)] bg-[color:var(--accentSoft)] text-neutral-900"
-                                                            : "border-black/10 bg-white/70 text-neutral-600 hover:bg-white/85")
-                                                    }
-                                                    aria-label={`Vel ${v.size}`}
-                                                >
-                                                    {v.size}
-                                                </Link>
-                                            );
-                                        })}
+                                        return (
+                                            <Link
+                                                key={v.id}
+                                                href={`/safteri/products/${product.slug}?variant=${encodeURIComponent(String(v.id))}`}
+                                                className={
+                                                    "rounded-full border px-3 py-1 text-xs backdrop-blur transition " +
+                                                    (isActive
+                                                        ? "border-[color:var(--accentSoft)] bg-[color:var(--accentSoft)] text-neutral-900"
+                                                        : "border-black/10 bg-white/70 text-neutral-600 hover:bg-white/85")
+                                                }
+                                                aria-label={`Vel ${getVariantLabel(v)}`}
+                                            >
+                                                {getVariantLabel(v)}
+                                            </Link>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         ) : null}
@@ -350,7 +384,7 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
                     </div>
 
                     {/* Image */}
-                    <div className="md:col-span-7 lg:col-span-8">
+                    <div className="order-1 md:order-2 md:col-span-7 lg:col-span-8">
                         <div className="mx-auto max-w-[620px] rounded-[28px] bg-[color:var(--accentSurface)] p-4 ring-1 ring-black/10">
                             <div className="relative aspect-square overflow-hidden rounded-[22px] bg-neutral-100 p-6 md:p-8">
                                 <Image

@@ -61,6 +61,7 @@ export type FullProduct = {
     brand: ProductBrand;
     category: string;
     active: boolean;
+    defaultVariantId?: string;
 
     // optional copy
     shortDesc?: string;
@@ -167,6 +168,7 @@ function mapProduct(id: string, data: DocumentData): FullProduct | null {
     const slug = asString(data.slug);
     const brand = normalizeBrand(data.brand);
     const category = asString(data.category) ?? "";
+    const defaultVariantId = asString(data.defaultVariantId) ?? undefined;
 
     // minimal requirements for public display
     if (!name || !slug || !brand) return null;
@@ -186,6 +188,7 @@ function mapProduct(id: string, data: DocumentData): FullProduct | null {
         brand,
         category,
         active: asBool(data.active, true),
+        defaultVariantId,
 
         shortDesc:
             asString(data.shortDesc) ??

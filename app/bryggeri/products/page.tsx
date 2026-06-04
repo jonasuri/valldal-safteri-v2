@@ -143,11 +143,58 @@ function formatVariantLabel(variant: any) {
     return alcoholPercent ? `${variant.label} · ${alcoholPercent}` : variant.label;
 }
 
+function getVariantLabel(variant: any) {
+    return String(variant?.size ?? variant?.label ?? "").trim();
+}
+
+function getVariantSortValue(variant: any) {
+    const label = getVariantLabel(variant).toLowerCase().replace(",", ".");
+    const match = label.match(/([0-9]+(?:\.[0-9]+)?)\s*(ml|l|g|kg)/i);
+
+    if (!match) return Number.MAX_SAFE_INTEGER;
+
+    const value = Number(match[1]);
+    const unit = match[2].toLowerCase();
+
+    if (!Number.isFinite(value)) return Number.MAX_SAFE_INTEGER;
+
+    if (unit === "l") return value * 1000;
+    if (unit === "ml") return value;
+    if (unit === "kg") return value * 1000;
+    if (unit === "g") return value;
+
+    return Number.MAX_SAFE_INTEGER;
+}
+
+function sortVariantsBySize(variants: any[] = []) {
+    return [...variants].sort((a, b) => {
+        const sizeCompare = getVariantSortValue(a) - getVariantSortValue(b);
+        if (sizeCompare !== 0) return sizeCompare;
+        return getVariantLabel(a).localeCompare(getVariantLabel(b), "nb");
+    });
+}
+
+function getDisplayVariants(product: any) {
+    const activeVariants = sortVariantsBySize((product.variants || []).filter((v: any) => v?.active !== false));
+    const defaultVariant = activeVariants.find((v: any) => String(v.id) === String(product.defaultVariantId));
+
+    if (!defaultVariant) return activeVariants;
+
+    return [defaultVariant, ...activeVariants.filter((v: any) => String(v.id) !== String(defaultVariant.id))];
+}
+
+function getProductCardImage(product: any) {
+    const activeVariants = sortVariantsBySize((product.variants || []).filter((v: any) => v?.active !== false));
+    const defaultVariant = activeVariants.find((v: any) => String(v.id) === String(product.defaultVariantId));
+
+    return defaultVariant?.imageUrl || product.imageUrl || product.thumbnailUrl || product.image || product.images?.[0]?.src || "/placeholder.jpg";
+}
+
 function ProductCard({ product }: { product: any }) {
-    const image = product.imageUrl || product.thumbnailUrl || product.image || product.images?.[0]?.src || "/placeholder.jpg";
+    const image = getProductCardImage(product);
     const imageAlt = product.images?.[0]?.alt || product.name;
     const shortDescription = product.shortDesc || product.shortDescription || product.description;
-    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const variants = getDisplayVariants(product);
     const isBeer = isBeerProduct(product);
     const alcoholPercent = formatAlcoholPercent(
         product.alcoholPercent ?? product.abv ?? product.alcohol
@@ -183,7 +230,12 @@ function ProductCard({ product }: { product: any }) {
                     {variants.map((v: any) => (
                         <span
                             key={v.id}
-                            className="rounded-full border border-black/10 bg-white/70 px-3 py-1 text-xs text-neutral-600 backdrop-blur"
+                            className={
+                                "rounded-full border px-3 py-1 text-xs backdrop-blur " +
+                                (String(v.id) === String(product.defaultVariantId)
+                                    ? "border-[color:var(--accentSoft)] bg-[color:var(--accentSoft)] text-neutral-900"
+                                    : "border-black/10 bg-white/70 text-neutral-600")
+                            }
                         >
                             {formatVariantLabel(v)}
                         </span>

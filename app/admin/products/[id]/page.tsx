@@ -17,6 +17,7 @@ type ProductDoc = {
     description?: string;
     longDescription?: string;
     active?: boolean;
+    defaultVariantId?: string;
     thumbnailUrl?: string;
     imageUrl?: string;
     image?: string;
@@ -171,6 +172,7 @@ export default function AdminProductEditPage({
     const [description, setDescription] = useState("");
     const [longDescription, setLongDescription] = useState("");
     const [active, setActive] = useState(true);
+    const [defaultVariantId, setDefaultVariantId] = useState("");
     // Thumbnail state
     const [thumbnailUrl, setThumbnailUrl] = useState<string>("");
     const [thumbUploading, setThumbUploading] = useState(false);
@@ -226,6 +228,7 @@ export default function AdminProductEditPage({
         description: string;
         longDescription: string;
         active: boolean;
+        defaultVariantId: string;
         thumbnailUrl: string;
         variants: VariantForm[];
         ingredients: string;
@@ -275,6 +278,7 @@ export default function AdminProductEditPage({
                 const loadedDescription = typeof data.description === "string" ? data.description : "";
                 const loadedLongDescription = typeof data.longDescription === "string" ? data.longDescription : "";
                 const loadedActive = typeof data.active === "boolean" ? data.active : true;
+                const loadedDefaultVariantId = typeof data.defaultVariantId === "string" ? data.defaultVariantId : "";
                 const loadedThumb =
                     normalizeImageUrl(data.thumbnailUrl) ||
                     normalizeImageUrl(data.imageUrl) ||
@@ -308,6 +312,10 @@ export default function AdminProductEditPage({
                     loadedVariants = [{ id: String(Date.now()), label: "", sku: "", price: "", priceTrade: "", priceDistributor: "", alcoholPercent: "", active: true }];
                 }
 
+                const resolvedDefaultVariantId = loadedVariants.some((v) => v.id === loadedDefaultVariantId)
+                    ? loadedDefaultVariantId
+                    : loadedVariants[0]?.id || "";
+
                 // Product-level fields
                 const loadedIngredients = typeof data.ingredients === "string" ? data.ingredients : "";
                 const loadedAllergens =
@@ -337,6 +345,7 @@ export default function AdminProductEditPage({
                 setDescription(loadedDescription);
                 setLongDescription(loadedLongDescription);
                 setActive(loadedActive);
+                setDefaultVariantId(resolvedDefaultVariantId);
                 setThumbnailUrl(loadedThumb);
                 setVariants(loadedVariants);
                 setIngredients(loadedIngredients);
@@ -351,6 +360,7 @@ export default function AdminProductEditPage({
                     description: loadedDescription,
                     longDescription: loadedLongDescription,
                     active: loadedActive,
+                    defaultVariantId: resolvedDefaultVariantId,
                     thumbnailUrl: loadedThumb,
                     variants: loadedVariants,
                     ingredients: loadedIngredients,
@@ -401,13 +411,14 @@ export default function AdminProductEditPage({
             description !== initial.description ||
             longDescription !== initial.longDescription ||
             active !== initial.active ||
+            defaultVariantId !== initial.defaultVariantId ||
             thumbnailUrl !== initial.thumbnailUrl ||
             variantsChanged ||
             ingredients !== initial.ingredients ||
             allergens !== initial.allergens ||
             JSON.stringify(nutrition) !== JSON.stringify(initial.nutrition)
         );
-    }, [initial, name, slug, brand, category, description, longDescription, active, thumbnailUrl, variants, ingredients, allergens, nutrition]);
+    }, [initial, name, slug, brand, category, description, longDescription, active, defaultVariantId, thumbnailUrl, variants, ingredients, allergens, nutrition]);
 
     async function handleSave() {
         if (!productId) return;
@@ -470,6 +481,10 @@ export default function AdminProductEditPage({
                 return;
             }
 
+            const resolvedDefaultVariantId = variants.some((v) => v.id === defaultVariantId)
+                ? defaultVariantId
+                : variants[0]?.id || "";
+
             const nextVariants = variants.map((v) => {
                 const retailPrice = Number(v.price.trim().replace(",", "."));
 
@@ -525,6 +540,7 @@ export default function AdminProductEditPage({
                 description: description.trim(),
                 longDescription: longDescription.trim(),
                 active: !!active,
+                defaultVariantId: resolvedDefaultVariantId,
             };
 
             // Build update payload (Firestore does NOT allow `undefined` values)
@@ -567,6 +583,7 @@ export default function AdminProductEditPage({
                 description: next.description || "",
                 longDescription: longDescription.trim(),
                 active: !!next.active,
+                defaultVariantId: resolvedDefaultVariantId,
                 thumbnailUrl: thumbnailUrl.trim(),
                 variants: variants.map((v) => ({
                     ...v,
@@ -600,6 +617,7 @@ export default function AdminProductEditPage({
             setDescription(nextInitial.description);
             setLongDescription(nextInitial.longDescription);
             setActive(nextInitial.active);
+            setDefaultVariantId(nextInitial.defaultVariantId);
             setThumbnailUrl(nextInitial.thumbnailUrl);
             setVariants(nextInitial.variants);
             setIngredients(nextInitial.ingredients);
@@ -907,10 +925,16 @@ export default function AdminProductEditPage({
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    setVariants((prev) => [
-                                                        ...prev,
-                                                        { id: String(Date.now()), label: "", sku: "", price: "", priceTrade: "", priceDistributor: "", alcoholPercent: "", active: true },
-                                                    ]);
+                                                    const id = String(Date.now());
+                                                    setVariants((prev) => {
+                                                        if (!prev.length && !defaultVariantId) {
+                                                            setDefaultVariantId(id);
+                                                        }
+                                                        return [
+                                                            ...prev,
+                                                            { id, label: "", sku: "", price: "", priceTrade: "", priceDistributor: "", alcoholPercent: "", active: true },
+                                                        ];
+                                                    });
                                                 }}
                                                 className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] bg-white px-4 py-2 text-[11px] font-medium text-neutral-800 hover:bg-black/5"
                                             >
@@ -1008,6 +1032,17 @@ export default function AdminProductEditPage({
                                                                 />
                                                                 Aktiv
                                                             </label>
+
+                                                            <label className="inline-flex items-center gap-2 text-[11px] text-neutral-700">
+                                                                <input
+                                                                    type="radio"
+                                                                    name="defaultVariant"
+                                                                    checked={(defaultVariantId || variants[0]?.id) === v.id}
+                                                                    onChange={() => setDefaultVariantId(v.id)}
+                                                                    className="h-4 w-4"
+                                                                />
+                                                                Standardvariant
+                                                            </label>
                                                         </div>
 
                                                         <button
@@ -1016,7 +1051,13 @@ export default function AdminProductEditPage({
                                                                 if (variants.length === 1) return;
                                                                 const ok = window.confirm("Slette denne varianten?");
                                                                 if (!ok) return;
-                                                                setVariants((prev) => prev.filter((x) => x.id !== v.id));
+                                                                setVariants((prev) => {
+                                                                    const next = prev.filter((x) => x.id !== v.id);
+                                                                    if (defaultVariantId === v.id) {
+                                                                        setDefaultVariantId(next[0]?.id || "");
+                                                                    }
+                                                                    return next;
+                                                                });
                                                             }}
                                                             disabled={variants.length === 1}
                                                             className="text-[11px] text-neutral-600 hover:text-neutral-900 disabled:opacity-40"
