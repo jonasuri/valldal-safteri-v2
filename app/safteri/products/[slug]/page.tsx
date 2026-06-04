@@ -201,6 +201,7 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
         activeVariants.find((v: any) => String(v.id) === selectedVariantId) ??
         defaultVariant;
     const selectedVariantIdResolved = selectedVariant ? String(selectedVariant.id) : "";
+    const dilutionRatio = (product as any).dilutionRatio?.trim?.() || "";
 
     const selectedImage = selectedVariant?.imageUrl
         ? {
@@ -303,6 +304,17 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
                             </div>
                         ) : null}
 
+                        {dilutionRatio ? (
+                            <div className="mt-6 rounded-[18px] border border-black/10 bg-white/60 p-4">
+                                <p className="text-xs tracking-[0.18em] uppercase text-neutral-600">
+                                    Blandingsforhold
+                                </p>
+                                <p className="mt-2 text-sm text-neutral-800">
+                                    {dilutionRatio}
+                                </p>
+                            </div>
+                        ) : null}
+
                         {/* Long description */}
                         {product.longDescription && (
                             <p className="mt-8 text-sm leading-7 text-neutral-600">
@@ -339,7 +351,9 @@ export default async function SafteriProductDetailPage({ params, searchParams }:
                             {product.nutrition && (
                                 <details className="group rounded-[18px] border border-black/10 bg-white/60 p-4">
                                     <summary className="cursor-pointer list-none text-sm font-medium text-neutral-800 flex items-center justify-between">
-                                        Næringsinnhald (per 100 g / ml)
+                                        {dilutionRatio
+                                            ? `Næringsinnhald per 100 ml ferdigblanda (${dilutionRatio})`
+                                            : "Næringsinnhald (per 100 g / ml)"}
                                         <span className="transition group-open:rotate-180">⌄</span>
                                     </summary>
                                     <div className="mt-4 overflow-x-auto">

@@ -38,6 +38,7 @@ type ProductDoc = {
     // Product-level fields
     ingredients?: string;
     allergens?: string;
+    dilutionRatio?: string;
     nutrition?: {
         basis?: "per_100g" | "per_100ml";
         energyKj?: string;
@@ -142,6 +143,26 @@ function getDefaultAllergens(brand: ProductDoc["brand"], category: string) {
     return "Ingen kjende allergen";
 }
 
+function getVariantSortValue(label: string) {
+    const normalized = String(label || "")
+        .toLowerCase()
+        .replace(",", ".");
+
+    const match = normalized.match(/([0-9]+(?:\.[0-9]+)?)\s*(ml|l|g|kg)/i);
+
+    if (!match) return Number.MAX_SAFE_INTEGER;
+
+    const value = Number(match[1]);
+    const unit = match[2].toLowerCase();
+
+    if (!Number.isFinite(value)) return Number.MAX_SAFE_INTEGER;
+
+    if (unit === "l") return value * 1000;
+    if (unit === "kg") return value * 1000;
+
+    return value;
+}
+
 export default function AdminProductEditPage({
     params,
 }: {
@@ -207,6 +228,7 @@ export default function AdminProductEditPage({
     // Form state for product-level fields
     const [ingredients, setIngredients] = useState("");
     const [allergens, setAllergens] = useState("");
+    const [dilutionRatio, setDilutionRatio] = useState("");
     const [nutrition, setNutrition] = useState<NutritionForm>({
         basis: "per_100g",
         energyKj: "",
@@ -233,6 +255,7 @@ export default function AdminProductEditPage({
         variants: VariantForm[];
         ingredients: string;
         allergens: string;
+        dilutionRatio: string;
         nutrition: NutritionForm;
     } | null>(null);
 
@@ -322,6 +345,7 @@ export default function AdminProductEditPage({
                     typeof data.allergens === "string" && data.allergens.trim().length > 0
                         ? data.allergens
                         : getDefaultAllergens(loadedBrand, loadedCategory);
+                const loadedDilutionRatio = typeof data.dilutionRatio === "string" ? data.dilutionRatio : "";
 
                 const rawNutrition = (data.nutrition && typeof data.nutrition === "object") ? data.nutrition : undefined;
                 const loadedNutrition: NutritionForm = {
@@ -350,6 +374,7 @@ export default function AdminProductEditPage({
                 setVariants(loadedVariants);
                 setIngredients(loadedIngredients);
                 setAllergens(loadedAllergens);
+                setDilutionRatio(loadedDilutionRatio);
                 setNutrition(loadedNutrition);
 
                 setInitial({
@@ -365,6 +390,7 @@ export default function AdminProductEditPage({
                     variants: loadedVariants,
                     ingredients: loadedIngredients,
                     allergens: loadedAllergens,
+                    dilutionRatio: loadedDilutionRatio,
                     nutrition: loadedNutrition,
                 });
             } catch (err) {
@@ -399,6 +425,7 @@ export default function AdminProductEditPage({
     }, [brand, category]);
 
     const shouldShowAlcoholPercent = brand === "bryggeri" && (category === "Øl" || category === "Sider");
+    const shouldShowDilutionRatio = brand === "safteri" && (category === "Saft" || !category);
 
     const hasChanges = useMemo(() => {
         if (!initial) return false;
@@ -416,9 +443,10 @@ export default function AdminProductEditPage({
             variantsChanged ||
             ingredients !== initial.ingredients ||
             allergens !== initial.allergens ||
+            dilutionRatio !== initial.dilutionRatio ||
             JSON.stringify(nutrition) !== JSON.stringify(initial.nutrition)
         );
-    }, [initial, name, slug, brand, category, description, longDescription, active, defaultVariantId, thumbnailUrl, variants, ingredients, allergens, nutrition]);
+    }, [initial, name, slug, brand, category, description, longDescription, active, defaultVariantId, thumbnailUrl, variants, ingredients, allergens, dilutionRatio, nutrition]);
 
     async function handleSave() {
         if (!productId) return;
@@ -557,6 +585,9 @@ export default function AdminProductEditPage({
             // Product-level fields
             payload.ingredients = ingredients.trim() || deleteField();
             payload.allergens = allergens.trim() || deleteField();
+            payload.dilutionRatio = shouldShowDilutionRatio
+                ? (dilutionRatio.trim() || deleteField())
+                : deleteField();
 
             const nextNutrition = {
                 basis: nutrition.basis,
@@ -597,6 +628,7 @@ export default function AdminProductEditPage({
                 })),
                 ingredients: ingredients.trim(),
                 allergens: allergens.trim(),
+                dilutionRatio: shouldShowDilutionRatio ? dilutionRatio.trim() : "",
                 nutrition: {
                     basis: nutrition.basis,
                     energyKj: nutrition.energyKj.trim(),
@@ -622,6 +654,7 @@ export default function AdminProductEditPage({
             setVariants(nextInitial.variants);
             setIngredients(nextInitial.ingredients);
             setAllergens(nextInitial.allergens);
+            setDilutionRatio(nextInitial.dilutionRatio);
             setNutrition(nextInitial.nutrition);
 
             setInitial(nextInitial);
@@ -947,259 +980,265 @@ export default function AdminProductEditPage({
                                             </div>
                                         ) : null}
                                         <div className="space-y-3">
-                                            {variants.map((v, idx) => (
-                                                <div key={v.id} className="rounded-[14px] border border-[color:var(--line)] bg-white p-4">
-                                                    <div className="flex flex-wrap items-center justify-between gap-3">
-                                                        <div className="flex items-center gap-3">
-                                                            <p className="text-xs font-medium text-neutral-800">Variant {idx + 1}</p>
+                                            {[...variants]
+                                                .sort((a, b) => {
+                                                    const sizeCompare = getVariantSortValue(a.label) - getVariantSortValue(b.label);
+                                                    if (sizeCompare !== 0) return sizeCompare;
+                                                    return a.label.localeCompare(b.label, "nb");
+                                                })
+                                                .map((v, idx) => (
+                                                    <div key={v.id} className="rounded-[14px] border border-[color:var(--line)] bg-white p-4">
+                                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <p className="text-xs font-medium text-neutral-800">Variant {idx + 1}</p>
 
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="h-10 w-10 overflow-hidden rounded-[10px] border border-[color:var(--line)] bg-neutral-100">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="h-10 w-10 overflow-hidden rounded-[10px] border border-[color:var(--line)] bg-neutral-100">
+                                                                        {v.imageUrl ? (
+                                                                            // eslint-disable-next-line @next/next/no-img-element
+                                                                            <img src={v.imageUrl} alt="Variantbilete" className="h-full w-full object-contain p-1" />
+                                                                        ) : thumbnailUrl ? (
+                                                                            // eslint-disable-next-line @next/next/no-img-element
+                                                                            <img src={thumbnailUrl} alt="Produktbilete" className="h-full w-full object-contain p-1 opacity-90" />
+                                                                        ) : null}
+                                                                    </div>
+
+                                                                    <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[color:var(--line)] bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-black/5">
+                                                                        <span>Last opp</span>
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/*"
+                                                                            className="hidden"
+                                                                            onChange={async (e) => {
+                                                                                const file = e.target.files?.[0];
+                                                                                if (!file) return;
+                                                                                try {
+                                                                                    const uploadFile = await resizeImageBeforeUpload(file);
+                                                                                    const safeName = `${Date.now()}-${uploadFile.name}`;
+                                                                                    const path = `products/variants/${productId}/${v.id}/${safeName}`;
+                                                                                    const r = storageRef(storage, path);
+                                                                                    await uploadBytes(r, uploadFile, { contentType: uploadFile.type });
+                                                                                    const url = await getDownloadURL(r);
+
+                                                                                    setVariants((prev) =>
+                                                                                        prev.map((x) => (x.id === v.id ? { ...x, imageUrl: normalizeImageUrl(url) } : x))
+                                                                                    );
+                                                                                } catch (err) {
+                                                                                    console.error("Feil ved opplasting av variantbilete:", err);
+                                                                                    window.alert("Noko gjekk gale under opplastinga av variantbiletet.");
+                                                                                } finally {
+                                                                                    e.target.value = "";
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                    </label>
+
                                                                     {v.imageUrl ? (
-                                                                        // eslint-disable-next-line @next/next/no-img-element
-                                                                        <img src={v.imageUrl} alt="Variantbilete" className="h-full w-full object-contain p-1" />
-                                                                    ) : thumbnailUrl ? (
-                                                                        // eslint-disable-next-line @next/next/no-img-element
-                                                                        <img src={thumbnailUrl} alt="Produktbilete" className="h-full w-full object-contain p-1 opacity-90" />
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={async () => {
+                                                                                const ok = window.confirm("Fjerne variantbiletet?");
+                                                                                if (!ok) return;
+
+                                                                                try {
+                                                                                    try {
+                                                                                        await deleteObject(storageRef(storage, v.imageUrl));
+                                                                                    } catch {
+                                                                                        // ignore
+                                                                                    }
+                                                                                } finally {
+                                                                                    setVariants((prev) =>
+                                                                                        prev.map((x) => (x.id === v.id ? { ...x, imageUrl: undefined } : x))
+                                                                                    );
+                                                                                }
+                                                                            }}
+                                                                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-black/5"
+                                                                        >
+                                                                            Fjern
+                                                                        </button>
                                                                     ) : null}
                                                                 </div>
 
-                                                                <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[color:var(--line)] bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-black/5">
-                                                                    <span>Last opp</span>
+                                                                <label className="inline-flex items-center gap-2 text-[11px] text-neutral-700">
                                                                     <input
-                                                                        type="file"
-                                                                        accept="image/*"
-                                                                        className="hidden"
-                                                                        onChange={async (e) => {
-                                                                            const file = e.target.files?.[0];
-                                                                            if (!file) return;
-                                                                            try {
-                                                                                const uploadFile = await resizeImageBeforeUpload(file);
-                                                                                const safeName = `${Date.now()}-${uploadFile.name}`;
-                                                                                const path = `products/variants/${productId}/${v.id}/${safeName}`;
-                                                                                const r = storageRef(storage, path);
-                                                                                await uploadBytes(r, uploadFile, { contentType: uploadFile.type });
-                                                                                const url = await getDownloadURL(r);
-
-                                                                                setVariants((prev) =>
-                                                                                    prev.map((x) => (x.id === v.id ? { ...x, imageUrl: normalizeImageUrl(url) } : x))
-                                                                                );
-                                                                            } catch (err) {
-                                                                                console.error("Feil ved opplasting av variantbilete:", err);
-                                                                                window.alert("Noko gjekk gale under opplastinga av variantbiletet.");
-                                                                            } finally {
-                                                                                e.target.value = "";
-                                                                            }
+                                                                        type="checkbox"
+                                                                        checked={typeof v.active === "boolean" ? v.active : true}
+                                                                        onChange={(e) => {
+                                                                            const checked = e.target.checked;
+                                                                            setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, active: checked } : x)));
                                                                         }}
+                                                                        className="h-4 w-4"
                                                                     />
+                                                                    Aktiv
                                                                 </label>
 
-                                                                {v.imageUrl ? (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={async () => {
-                                                                            const ok = window.confirm("Fjerne variantbiletet?");
-                                                                            if (!ok) return;
-
-                                                                            try {
-                                                                                try {
-                                                                                    await deleteObject(storageRef(storage, v.imageUrl));
-                                                                                } catch {
-                                                                                    // ignore
-                                                                                }
-                                                                            } finally {
-                                                                                setVariants((prev) =>
-                                                                                    prev.map((x) => (x.id === v.id ? { ...x, imageUrl: undefined } : x))
-                                                                                );
-                                                                            }
-                                                                        }}
-                                                                        className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-black/5"
-                                                                    >
-                                                                        Fjern
-                                                                    </button>
-                                                                ) : null}
+                                                                <label className="inline-flex items-center gap-2 text-[11px] text-neutral-700">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="defaultVariant"
+                                                                        checked={(defaultVariantId || variants[0]?.id) === v.id}
+                                                                        onChange={() => setDefaultVariantId(v.id)}
+                                                                        className="h-4 w-4"
+                                                                    />
+                                                                    Standardvariant
+                                                                </label>
                                                             </div>
 
-                                                            <label className="inline-flex items-center gap-2 text-[11px] text-neutral-700">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={typeof v.active === "boolean" ? v.active : true}
-                                                                    onChange={(e) => {
-                                                                        const checked = e.target.checked;
-                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, active: checked } : x)));
-                                                                    }}
-                                                                    className="h-4 w-4"
-                                                                />
-                                                                Aktiv
-                                                            </label>
-
-                                                            <label className="inline-flex items-center gap-2 text-[11px] text-neutral-700">
-                                                                <input
-                                                                    type="radio"
-                                                                    name="defaultVariant"
-                                                                    checked={(defaultVariantId || variants[0]?.id) === v.id}
-                                                                    onChange={() => setDefaultVariantId(v.id)}
-                                                                    className="h-4 w-4"
-                                                                />
-                                                                Standardvariant
-                                                            </label>
-                                                        </div>
-
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                if (variants.length === 1) return;
-                                                                const ok = window.confirm("Slette denne varianten?");
-                                                                if (!ok) return;
-                                                                setVariants((prev) => {
-                                                                    const next = prev.filter((x) => x.id !== v.id);
-                                                                    if (defaultVariantId === v.id) {
-                                                                        setDefaultVariantId(next[0]?.id || "");
-                                                                    }
-                                                                    return next;
-                                                                });
-                                                            }}
-                                                            disabled={variants.length === 1}
-                                                            className="text-[11px] text-neutral-600 hover:text-neutral-900 disabled:opacity-40"
-                                                        >
-                                                            Slett
-                                                        </button>
-                                                    </div>
-                                                    <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
-                                                        <div className="space-y-1">
-                                                            <label className="text-[11px] font-medium text-neutral-700">Storleik</label>
-                                                            <input
-                                                                type="text"
-                                                                value={v.label}
-                                                                onChange={(e) => {
-                                                                    const val = e.target.value;
-                                                                    setSaveToast(null);
-                                                                    setFieldErrors((prev) => {
-                                                                        const next = { ...prev };
-                                                                        const vErr = { ...(next.variants[v.id] || {}) };
-                                                                        delete vErr.label;
-                                                                        next.variants = { ...next.variants, [v.id]: vErr };
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (variants.length === 1) return;
+                                                                    const ok = window.confirm("Slette denne varianten?");
+                                                                    if (!ok) return;
+                                                                    setVariants((prev) => {
+                                                                        const next = prev.filter((x) => x.id !== v.id);
+                                                                        if (defaultVariantId === v.id) {
+                                                                            setDefaultVariantId(next[0]?.id || "");
+                                                                        }
                                                                         return next;
                                                                     });
-                                                                    setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, label: val } : x)));
                                                                 }}
-                                                                className={
-                                                                    "w-full rounded-[12px] border bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800 " +
-                                                                    (fieldErrors.variants[v.id]?.label ? "border-red-400" : "border-[color:var(--line)]")
-                                                                }
-                                                                placeholder='T.d. "390 ml"'
-                                                            />
-                                                            {fieldErrors.variants[v.id]?.label ? (
-                                                                <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.label}</p>
-                                                            ) : null}
+                                                                disabled={variants.length === 1}
+                                                                className="text-[11px] text-neutral-600 hover:text-neutral-900 disabled:opacity-40"
+                                                            >
+                                                                Slett
+                                                            </button>
                                                         </div>
-                                                        <div className="space-y-1">
-                                                            <label className="text-[11px] font-medium text-neutral-700">SKU</label>
-                                                            <input
-                                                                type="text"
-                                                                value={v.sku}
-                                                                onChange={(e) => {
-                                                                    const val = e.target.value.toUpperCase();
-                                                                    setSaveToast(null);
-                                                                    setFieldErrors((prev) => {
-                                                                        const next = { ...prev };
-                                                                        const vErr = { ...(next.variants[v.id] || {}) };
-                                                                        delete vErr.sku;
-                                                                        next.variants = { ...next.variants, [v.id]: vErr };
-                                                                        return next;
-                                                                    });
-                                                                    setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, sku: val } : x)));
-                                                                }}
-                                                                className={
-                                                                    "w-full rounded-[12px] border bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800 " +
-                                                                    (fieldErrors.variants[v.id]?.sku ? "border-red-400" : "border-[color:var(--line)]")
-                                                                }
-                                                                placeholder="T.d. SYLTE-JORDBAR-390"
-                                                            />
-                                                            {fieldErrors.variants[v.id]?.sku ? (
-                                                                <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.sku}</p>
-                                                            ) : null}
-                                                        </div>
-                                                        {shouldShowAlcoholPercent ? (
+                                                        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
                                                             <div className="space-y-1">
-                                                                <label className="text-[11px] font-medium text-neutral-700">Alkoholprosent</label>
+                                                                <label className="text-[11px] font-medium text-neutral-700">Storleik</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={v.label}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setSaveToast(null);
+                                                                        setFieldErrors((prev) => {
+                                                                            const next = { ...prev };
+                                                                            const vErr = { ...(next.variants[v.id] || {}) };
+                                                                            delete vErr.label;
+                                                                            next.variants = { ...next.variants, [v.id]: vErr };
+                                                                            return next;
+                                                                        });
+                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, label: val } : x)));
+                                                                    }}
+                                                                    className={
+                                                                        "w-full rounded-[12px] border bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800 " +
+                                                                        (fieldErrors.variants[v.id]?.label ? "border-red-400" : "border-[color:var(--line)]")
+                                                                    }
+                                                                    placeholder='T.d. "390 ml"'
+                                                                />
+                                                                {fieldErrors.variants[v.id]?.label ? (
+                                                                    <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.label}</p>
+                                                                ) : null}
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-medium text-neutral-700">SKU</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={v.sku}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value.toUpperCase();
+                                                                        setSaveToast(null);
+                                                                        setFieldErrors((prev) => {
+                                                                            const next = { ...prev };
+                                                                            const vErr = { ...(next.variants[v.id] || {}) };
+                                                                            delete vErr.sku;
+                                                                            next.variants = { ...next.variants, [v.id]: vErr };
+                                                                            return next;
+                                                                        });
+                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, sku: val } : x)));
+                                                                    }}
+                                                                    className={
+                                                                        "w-full rounded-[12px] border bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800 " +
+                                                                        (fieldErrors.variants[v.id]?.sku ? "border-red-400" : "border-[color:var(--line)]")
+                                                                    }
+                                                                    placeholder="T.d. SYLTE-JORDBAR-390"
+                                                                />
+                                                                {fieldErrors.variants[v.id]?.sku ? (
+                                                                    <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.sku}</p>
+                                                                ) : null}
+                                                            </div>
+                                                            {shouldShowAlcoholPercent ? (
+                                                                <div className="space-y-1">
+                                                                    <label className="text-[11px] font-medium text-neutral-700">Alkoholprosent</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        inputMode="decimal"
+                                                                        value={v.alcoholPercent}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value;
+                                                                            setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, alcoholPercent: val } : x)));
+                                                                        }}
+                                                                        className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                                        placeholder="T.d. 4,7"
+                                                                    />
+                                                                </div>
+                                                            ) : null}
+
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-medium text-neutral-700">Utsalspris</label>
                                                                 <input
                                                                     type="text"
                                                                     inputMode="decimal"
-                                                                    value={v.alcoholPercent}
+                                                                    value={v.price}
                                                                     onChange={(e) => {
                                                                         const val = e.target.value;
-                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, alcoholPercent: val } : x)));
+                                                                        setSaveToast(null);
+                                                                        setFieldErrors((prev) => {
+                                                                            const next = { ...prev };
+                                                                            const vErr = { ...(next.variants[v.id] || {}) };
+                                                                            delete vErr.price;
+                                                                            next.variants = { ...next.variants, [v.id]: vErr };
+                                                                            return next;
+                                                                        });
+                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, price: val } : x)));
+                                                                    }}
+                                                                    className={
+                                                                        "w-full rounded-[12px] border bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800 " +
+                                                                        (fieldErrors.variants[v.id]?.price ? "border-red-400" : "border-[color:var(--line)]")
+                                                                    }
+                                                                    placeholder="T.d. 89"
+                                                                />
+                                                                {fieldErrors.variants[v.id]?.price ? (
+                                                                    <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.price}</p>
+                                                                ) : null}
+                                                            </div>
+
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-medium text-neutral-700">Retailpris</label>
+                                                                <input
+                                                                    type="text"
+                                                                    inputMode="decimal"
+                                                                    value={v.priceTrade}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setSaveToast(null);
+                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, priceTrade: val } : x)));
                                                                     }}
                                                                     className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
-                                                                    placeholder="T.d. 4,7"
+                                                                    placeholder="Valfritt"
                                                                 />
                                                             </div>
-                                                        ) : null}
 
-                                                        <div className="space-y-1">
-                                                            <label className="text-[11px] font-medium text-neutral-700">Utsalspris</label>
-                                                            <input
-                                                                type="text"
-                                                                inputMode="decimal"
-                                                                value={v.price}
-                                                                onChange={(e) => {
-                                                                    const val = e.target.value;
-                                                                    setSaveToast(null);
-                                                                    setFieldErrors((prev) => {
-                                                                        const next = { ...prev };
-                                                                        const vErr = { ...(next.variants[v.id] || {}) };
-                                                                        delete vErr.price;
-                                                                        next.variants = { ...next.variants, [v.id]: vErr };
-                                                                        return next;
-                                                                    });
-                                                                    setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, price: val } : x)));
-                                                                }}
-                                                                className={
-                                                                    "w-full rounded-[12px] border bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800 " +
-                                                                    (fieldErrors.variants[v.id]?.price ? "border-red-400" : "border-[color:var(--line)]")
-                                                                }
-                                                                placeholder="T.d. 89"
-                                                            />
-                                                            {fieldErrors.variants[v.id]?.price ? (
-                                                                <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.price}</p>
-                                                            ) : null}
-                                                        </div>
-
-                                                        <div className="space-y-1">
-                                                            <label className="text-[11px] font-medium text-neutral-700">Retailpris</label>
-                                                            <input
-                                                                type="text"
-                                                                inputMode="decimal"
-                                                                value={v.priceTrade}
-                                                                onChange={(e) => {
-                                                                    const val = e.target.value;
-                                                                    setSaveToast(null);
-                                                                    setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, priceTrade: val } : x)));
-                                                                }}
-                                                                className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
-                                                                placeholder="Valfritt"
-                                                            />
-                                                        </div>
-
-                                                        <div className="space-y-1">
-                                                            <label className="text-[11px] font-medium text-neutral-700">Grossistpris</label>
-                                                            <input
-                                                                type="text"
-                                                                inputMode="decimal"
-                                                                value={v.priceDistributor}
-                                                                onChange={(e) => {
-                                                                    const val = e.target.value;
-                                                                    setSaveToast(null);
-                                                                    setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, priceDistributor: val } : x)));
-                                                                }}
-                                                                className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
-                                                                placeholder="Valfritt"
-                                                            />
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-medium text-neutral-700">Grossistpris</label>
+                                                                <input
+                                                                    type="text"
+                                                                    inputMode="decimal"
+                                                                    value={v.priceDistributor}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setSaveToast(null);
+                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, priceDistributor: val } : x)));
+                                                                    }}
+                                                                    className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                                    placeholder="Valfritt"
+                                                                />
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                ))}
                                         </div>
                                     </div>
 
@@ -1270,6 +1309,24 @@ export default function AdminProductEditPage({
                                                 />
                                             </div>
                                         </div>
+                                        {shouldShowDilutionRatio ? (
+                                            <div className="mt-4 space-y-1">
+                                                <label className="text-xs font-medium text-neutral-800" htmlFor="prodDilutionRatio">
+                                                    Blandingsforhold
+                                                </label>
+                                                <input
+                                                    id="prodDilutionRatio"
+                                                    type="text"
+                                                    value={dilutionRatio}
+                                                    onChange={(e) => setDilutionRatio(e.target.value)}
+                                                    className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                    placeholder="T.d. 1+4"
+                                                />
+                                                <p className="text-[11px] text-neutral-500">
+                                                    Brukast for saft. Næringsinnhald kan då visast som ferdigblanda drikk.
+                                                </p>
+                                            </div>
+                                        ) : null}
 
                                         <div className="mt-6">
                                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">

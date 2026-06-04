@@ -89,6 +89,8 @@ export type FullProduct = {
     ingredientsText?: string;
     allergensText?: string;
 
+    dilutionRatio?: string;
+
     nutrition?: NutritionPer100;
 
     updatedAt?: unknown;
@@ -225,6 +227,8 @@ function mapProduct(id: string, data: DocumentData): FullProduct | null {
         // legacy aliases
         ingredientsText: asString(data.ingredientsText) ?? asString(data.ingredients) ?? undefined,
         allergensText: asString(data.allergensText) ?? asString(data.allergens) ?? undefined,
+
+        dilutionRatio: asString(data.dilutionRatio) ?? undefined,
 
         nutrition: mapNutrition(data.nutrition),
 
