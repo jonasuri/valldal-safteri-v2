@@ -50,6 +50,12 @@ export type NutritionPer100 = {
     salt?: number;
 };
 
+export type TasteProfile = {
+    freshness?: number;
+    bitterness?: number;
+    body?: number;
+};
+
 export type FullProduct = {
     id: string;
     name: string;
@@ -91,6 +97,7 @@ export type FullProduct = {
 
     dilutionRatio?: string;
     badgeText?: string;
+    tasteProfile?: TasteProfile;
 
     nutrition?: NutritionPer100;
 
@@ -166,6 +173,21 @@ function mapNutrition(raw: unknown): NutritionPer100 | undefined {
     return anyValue ? n : undefined;
 }
 
+function mapTasteProfile(raw: unknown): TasteProfile | undefined {
+    if (!raw || typeof raw !== "object") return undefined;
+
+    const obj = raw as Record<string, unknown>;
+
+    const profile: TasteProfile = {
+        freshness: asNumber(obj.freshness),
+        bitterness: asNumber(obj.bitterness),
+        body: asNumber(obj.body),
+    };
+
+    const hasValue = Object.values(profile).some((v) => typeof v === "number");
+    return hasValue ? profile : undefined;
+}
+
 function mapProduct(id: string, data: DocumentData): FullProduct | null {
     const name = asString(data.name) ?? asString(data.productName);
     const slug = asString(data.slug);
@@ -231,6 +253,7 @@ function mapProduct(id: string, data: DocumentData): FullProduct | null {
 
         dilutionRatio: asString(data.dilutionRatio) ?? undefined,
         badgeText: asString(data.badgeText) ?? undefined,
+        tasteProfile: mapTasteProfile(data.tasteProfile),
 
         nutrition: mapNutrition(data.nutrition),
 

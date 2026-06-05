@@ -143,6 +143,36 @@ function formatVariantLabel(variant: any) {
     return alcoholPercent ? `${variant.label} · ${alcoholPercent}` : variant.label;
 }
 
+function clampTasteValue(value: unknown) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(10, Math.round(n)));
+}
+
+function TasteMiniBar({ label, value }: { label: string; value: number }) {
+    const safeValue = clampTasteValue(value);
+
+    return (
+        <div className="flex items-center gap-1.5">
+            <span className="w-4 text-[9px] font-medium text-neutral-700">{label}</span>
+            <div className="flex gap-[2px]">
+                {Array.from({ length: 10 }).map((_, index) => (
+                    <span
+                        key={index}
+                        className="h-[2px] w-[5px] rounded-full"
+                        style={{
+                            backgroundColor:
+                                index < safeValue
+                                    ? 'rgba(176, 122, 42, 0.75)'
+                                    : 'rgba(0,0,0,0.12)',
+                        }}
+                    />
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function getVariantLabel(variant: any) {
     return String(variant?.size ?? variant?.label ?? "").trim();
 }
@@ -195,6 +225,11 @@ function ProductCard({ product }: { product: any }) {
     const alcoholPercent = formatAlcoholPercent(
         product.alcoholPercent ?? product.abv ?? product.alcohol
     );
+    const tasteProfile = product.tasteProfile || {};
+    const freshness = clampTasteValue(tasteProfile.freshness);
+    const bitterness = clampTasteValue(tasteProfile.bitterness);
+    const body = clampTasteValue(tasteProfile.body);
+    const hasTasteProfile = freshness > 0 || bitterness > 0 || body > 0;
 
     return (
         <Link
@@ -206,6 +241,13 @@ function ProductCard({ product }: { product: any }) {
                 {badgeText ? (
                     <div className="absolute left-3 top-3 z-10 rounded-full border border-[color:var(--accentSoft)] bg-[color:var(--paper)] px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-neutral-800">
                         {badgeText}
+                    </div>
+                ) : null}
+                {hasTasteProfile ? (
+                    <div className="absolute bottom-3 right-3 z-10 space-y-1">
+                        {freshness > 0 ? <TasteMiniBar label="F" value={freshness} /> : null}
+                        {bitterness > 0 ? <TasteMiniBar label="B" value={bitterness} /> : null}
+                        {body > 0 ? <TasteMiniBar label="Fy" value={body} /> : null}
                     </div>
                 ) : null}
                 <Image

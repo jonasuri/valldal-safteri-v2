@@ -40,6 +40,11 @@ type ProductDoc = {
     allergens?: string;
     dilutionRatio?: string;
     badgeText?: string;
+    tasteProfile?: {
+        freshness?: number;
+        bitterness?: number;
+        body?: number;
+    };
     nutrition?: {
         basis?: "per_100g" | "per_100ml";
         energyKj?: string;
@@ -224,6 +229,12 @@ export default function AdminProductEditPage({
         protein: string;
         salt: string;
     };
+    type TasteProfileForm = {
+        freshness: string;
+        bitterness: string;
+        body: string;
+    };
+
     const [variants, setVariants] = useState<VariantForm[]>([]);
     const [variantError, setVariantError] = useState<string | null>(null);
 
@@ -232,6 +243,11 @@ export default function AdminProductEditPage({
     const [allergens, setAllergens] = useState("");
     const [dilutionRatio, setDilutionRatio] = useState("");
     const [badgeText, setBadgeText] = useState("");
+    const [tasteProfile, setTasteProfile] = useState<TasteProfileForm>({
+        freshness: "",
+        bitterness: "",
+        body: "",
+    });
     const [nutrition, setNutrition] = useState<NutritionForm>({
         basis: "per_100g",
         energyKj: "",
@@ -260,6 +276,7 @@ export default function AdminProductEditPage({
         allergens: string;
         dilutionRatio: string;
         badgeText: string;
+        tasteProfile: TasteProfileForm;
         nutrition: NutritionForm;
     } | null>(null);
 
@@ -351,6 +368,11 @@ export default function AdminProductEditPage({
                         : getDefaultAllergens(loadedBrand, loadedCategory);
                 const loadedDilutionRatio = typeof data.dilutionRatio === "string" ? data.dilutionRatio : "";
                 const loadedBadgeText = typeof data.badgeText === "string" ? data.badgeText : "";
+                const loadedTasteProfile: TasteProfileForm = {
+                    freshness: typeof data.tasteProfile?.freshness === "number" ? String(data.tasteProfile.freshness) : "",
+                    bitterness: typeof data.tasteProfile?.bitterness === "number" ? String(data.tasteProfile.bitterness) : "",
+                    body: typeof data.tasteProfile?.body === "number" ? String(data.tasteProfile.body) : "",
+                };
 
                 const rawNutrition = (data.nutrition && typeof data.nutrition === "object") ? data.nutrition : undefined;
                 const loadedNutrition: NutritionForm = {
@@ -381,6 +403,7 @@ export default function AdminProductEditPage({
                 setAllergens(loadedAllergens);
                 setDilutionRatio(loadedDilutionRatio);
                 setBadgeText(loadedBadgeText);
+                setTasteProfile(loadedTasteProfile);
                 setNutrition(loadedNutrition);
 
                 setInitial({
@@ -398,6 +421,7 @@ export default function AdminProductEditPage({
                     allergens: loadedAllergens,
                     dilutionRatio: loadedDilutionRatio,
                     badgeText: loadedBadgeText,
+                    tasteProfile: loadedTasteProfile,
                     nutrition: loadedNutrition,
                 });
             } catch (err) {
@@ -433,6 +457,7 @@ export default function AdminProductEditPage({
 
     const shouldShowAlcoholPercent = brand === "bryggeri" && (category === "Øl" || category === "Sider");
     const shouldShowDilutionRatio = brand === "safteri" && category === "Saft";
+    const shouldShowTasteProfile = brand === "bryggeri" && category === "Øl";
 
     const hasChanges = useMemo(() => {
         if (!initial) return false;
@@ -452,9 +477,10 @@ export default function AdminProductEditPage({
             allergens !== initial.allergens ||
             dilutionRatio !== initial.dilutionRatio ||
             badgeText !== initial.badgeText ||
+            JSON.stringify(tasteProfile) !== JSON.stringify(initial.tasteProfile) ||
             JSON.stringify(nutrition) !== JSON.stringify(initial.nutrition)
         );
-    }, [initial, name, slug, brand, category, description, longDescription, active, defaultVariantId, thumbnailUrl, variants, ingredients, allergens, dilutionRatio, badgeText, nutrition]);
+    }, [initial, name, slug, brand, category, description, longDescription, active, defaultVariantId, thumbnailUrl, variants, ingredients, allergens, dilutionRatio, badgeText, tasteProfile, nutrition]);
 
     async function handleSave() {
         if (!productId) return;
@@ -603,6 +629,22 @@ export default function AdminProductEditPage({
                 : deleteField();
             payload.badgeText = badgeText.trim() || deleteField();
 
+            const nextTasteProfile = {
+                freshness: Number(tasteProfile.freshness),
+                bitterness: Number(tasteProfile.bitterness),
+                body: Number(tasteProfile.body),
+            };
+            const hasTasteProfile = shouldShowTasteProfile &&
+                Object.values(nextTasteProfile).some((value) => Number.isFinite(value) && value > 0);
+
+            payload.tasteProfile = hasTasteProfile
+                ? {
+                    freshness: Number.isFinite(nextTasteProfile.freshness) ? Math.max(0, Math.min(10, Math.round(nextTasteProfile.freshness))) : 0,
+                    bitterness: Number.isFinite(nextTasteProfile.bitterness) ? Math.max(0, Math.min(10, Math.round(nextTasteProfile.bitterness))) : 0,
+                    body: Number.isFinite(nextTasteProfile.body) ? Math.max(0, Math.min(10, Math.round(nextTasteProfile.body))) : 0,
+                }
+                : deleteField();
+
             const nextNutrition = {
                 basis: nutrition.basis,
                 energyKj: nutrition.energyKj.trim(),
@@ -644,6 +686,13 @@ export default function AdminProductEditPage({
                 allergens: allergens.trim(),
                 dilutionRatio: shouldShowDilutionRatio ? dilutionRatio.trim() : "",
                 badgeText: badgeText.trim(),
+                tasteProfile: shouldShowTasteProfile
+                    ? {
+                        freshness: tasteProfile.freshness.trim(),
+                        bitterness: tasteProfile.bitterness.trim(),
+                        body: tasteProfile.body.trim(),
+                    }
+                    : { freshness: "", bitterness: "", body: "" },
                 nutrition: {
                     basis: nutrition.basis,
                     energyKj: nutrition.energyKj.trim(),
@@ -672,6 +721,7 @@ export default function AdminProductEditPage({
             setDilutionRatio(nextInitial.dilutionRatio);
             setBadgeText(nextInitial.badgeText);
             setNutrition(nextInitial.nutrition);
+            setTasteProfile(nextInitial.tasteProfile);
 
             setInitial(nextInitial);
             setSaved(true);
@@ -1369,6 +1419,53 @@ export default function AdminProductEditPage({
                                                 Vist som badge på produktkort og produktside når feltet er fylt ut.
                                             </p>
                                         </div>
+
+                                        {shouldShowTasteProfile ? (
+                                            <div className="mt-4 rounded-[14px] border border-[color:var(--line)] bg-white/70 p-4">
+                                                <h4 className="text-xs font-medium text-neutral-900">Smaksprofil</h4>
+                                                <p className="mt-1 text-[11px] text-neutral-500">
+                                                    Bruk skala frå 1 til 10. Blir vist på produktsida for øl.
+                                                </p>
+                                                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                                    <label className="space-y-1 text-[11px] font-medium text-neutral-700">
+                                                        Friskheit
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="10"
+                                                            value={tasteProfile.freshness}
+                                                            onChange={(e) => setTasteProfile((prev) => ({ ...prev, freshness: e.target.value }))}
+                                                            className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none focus:border-neutral-800"
+                                                            placeholder="0–10"
+                                                        />
+                                                    </label>
+                                                    <label className="space-y-1 text-[11px] font-medium text-neutral-700">
+                                                        Bitterheit
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="10"
+                                                            value={tasteProfile.bitterness}
+                                                            onChange={(e) => setTasteProfile((prev) => ({ ...prev, bitterness: e.target.value }))}
+                                                            className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none focus:border-neutral-800"
+                                                            placeholder="0–10"
+                                                        />
+                                                    </label>
+                                                    <label className="space-y-1 text-[11px] font-medium text-neutral-700">
+                                                        Fylde
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="10"
+                                                            value={tasteProfile.body}
+                                                            onChange={(e) => setTasteProfile((prev) => ({ ...prev, body: e.target.value }))}
+                                                            className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none focus:border-neutral-800"
+                                                            placeholder="0–10"
+                                                        />
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        ) : null}
 
                                         <div className="mt-6">
                                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">

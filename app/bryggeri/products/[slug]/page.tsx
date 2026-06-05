@@ -53,6 +53,31 @@ function sortVariantsBySize(variants: any[] = []) {
     });
 }
 
+function clampProfileValue(value: unknown) {
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) return 0;
+    return Math.max(0, Math.min(10, Math.round(numberValue)));
+}
+
+function ProfileBar({ label, value }: { label: string; value: number }) {
+    const safeValue = clampProfileValue(value);
+
+    return (
+        <div>
+            <div className="mb-1 flex items-center justify-between gap-4 text-xs text-neutral-600">
+                <span>{label}</span>
+                <span>{safeValue}/10</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-black/10">
+                <div
+                    className="h-full rounded-full bg-[color:var(--accent)]"
+                    style={{ width: `${safeValue * 10}%` }}
+                />
+            </div>
+        </div>
+    );
+}
+
 export default async function BryggeriProductDetailPage({ params, searchParams }: PageProps) {
     const slugify = (value: unknown) => {
         const s = String(value ?? "")
@@ -162,6 +187,11 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
         (product as any).alcohol;
     const formattedAlcoholPercent = formatAlcoholPercent(rawAlcoholPercent);
     const badgeText = (product as any).badgeText?.trim?.() || "";
+    const tasteProfile = (product as any).tasteProfile || {};
+    const freshness = clampProfileValue(tasteProfile.freshness);
+    const bitterness = clampProfileValue(tasteProfile.bitterness);
+    const body = clampProfileValue(tasteProfile.body);
+    const hasTasteProfile = freshness > 0 || bitterness > 0 || body > 0;
 
     return (
         <main
@@ -171,6 +201,7 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
                     // Bryggeri accent wash (amber / malt)
                     "--accentSurface": "rgba(176, 122, 42, 0.06)",
                     "--accentSoft": "rgba(176, 122, 42, 0.12)",
+                    "--accent": "rgba(176, 122, 42, 0.72)",
                 } as CSSProperties
             }
         >
@@ -231,6 +262,19 @@ export default async function BryggeriProductDetailPage({ params, searchParams }
                                             </Link>
                                         );
                                     })}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {hasTasteProfile ? (
+                            <div className="mt-8 rounded-[18px] border border-black/10 bg-white/60 p-4">
+                                <p className="text-xs tracking-[0.18em] uppercase text-neutral-600">
+                                    Smaksprofil
+                                </p>
+                                <div className="mt-4 space-y-3">
+                                    {freshness > 0 ? <ProfileBar label="Friskheit" value={freshness} /> : null}
+                                    {bitterness > 0 ? <ProfileBar label="Bitterheit" value={bitterness} /> : null}
+                                    {body > 0 ? <ProfileBar label="Fylde" value={body} /> : null}
                                 </div>
                             </div>
                         ) : null}
