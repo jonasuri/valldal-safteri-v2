@@ -175,12 +175,7 @@ function sortVariantsBySize(variants: any[] = []) {
 }
 
 function getDisplayVariants(product: any) {
-    const activeVariants = sortVariantsBySize((product.variants || []).filter((v: any) => v?.active !== false));
-    const defaultVariant = activeVariants.find((v: any) => String(v.id) === String(product.defaultVariantId));
-
-    if (!defaultVariant) return activeVariants;
-
-    return [defaultVariant, ...activeVariants.filter((v: any) => String(v.id) !== String(defaultVariant.id))];
+    return sortVariantsBySize((product.variants || []).filter((v: any) => v?.active !== false));
 }
 
 function getProductCardImage(product: any) {
@@ -236,12 +231,7 @@ function ProductCard({ product }: { product: any }) {
                     {variants.map((v: any) => (
                         <span
                             key={v.id}
-                            className={
-                                "rounded-full border px-3 py-1 text-xs backdrop-blur " +
-                                (String(v.id) === String(product.defaultVariantId)
-                                    ? "border-[color:var(--accentSoft)] bg-[color:var(--accentSoft)] text-neutral-900"
-                                    : "border-black/10 bg-white/70 text-neutral-600")
-                            }
+                            className="rounded-full border border-black/10 bg-white/70 px-3 py-1 text-xs text-neutral-600 backdrop-blur"
                         >
                             {formatVariantLabel(v)}
                         </span>
