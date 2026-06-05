@@ -343,14 +343,11 @@ export default function BryggeriPage() {
                 </div>
                 <div className="mt-8 grid gap-6 md:grid-cols-2">
                     {siteContent.bryggeri.utval.categories.map((cat, idx) => (
-                        <div
+                        <Link
                             key={idx}
-                            className="relative rounded-[28px] border border-[color:var(--line)] bg-[color:var(--accentSurface)] p-7 opacity-70"
+                            href="/bryggeri/products"
+                            className="group relative block rounded-[28px] border border-[color:var(--line)] bg-[color:var(--accentSurface)] p-7 transition hover:-translate-y-0.5 hover:bg-[color:var(--accentSoft)] hover:shadow-[0_14px_40px_rgba(0,0,0,0.06)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/20"
                         >
-                            <div className="absolute right-5 top-5 rounded-full border border-[color:var(--line)] bg-white/70 px-3 py-1 text-[11px] font-medium text-neutral-800">
-                                Kjem snart
-                            </div>
-
                             <h3
                                 className="text-2xl tracking-tight md:text-3xl"
                                 style={{ fontFamily: "var(--font-serif)" }}
@@ -360,11 +357,10 @@ export default function BryggeriPage() {
                             <p className="mt-3 text-sm leading-7 text-neutral-700">
                                 {cat.title.toLowerCase().includes("sider") ? siderDescription : olDescription}
                             </p>
-
-                            <div className="mt-5 text-xs text-neutral-600">
-                                Produktsider kjem snart.
+                            <div className="mt-5 text-xs font-medium text-neutral-700 transition group-hover:text-neutral-900">
+                                Sjå produkt →
                             </div>
-                        </div>
+                        </Link>
                     ))}
                 </div>
             </section>
