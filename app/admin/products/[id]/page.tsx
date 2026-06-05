@@ -183,6 +183,7 @@ export default function AdminProductEditPage({
     const [saveToast, setSaveToast] = useState<SaveToast | null>(null);
     const [fieldErrors, setFieldErrors] = useState<{
         name?: string;
+        category?: string;
         variants: Record<string, VariantFieldErrors>;
     }>({ variants: {} });
 
@@ -415,8 +416,8 @@ export default function AdminProductEditPage({
     // Keep category valid when brand changes
     useEffect(() => {
         const options = getCategoryOptions(brand || "safteri");
-        if (!category || !options.includes(category)) {
-            setCategory(options[0] || "");
+        if (category && !options.includes(category)) {
+            setCategory("");
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [brand]);
@@ -431,7 +432,7 @@ export default function AdminProductEditPage({
     }, [brand, category]);
 
     const shouldShowAlcoholPercent = brand === "bryggeri" && (category === "Øl" || category === "Sider");
-    const shouldShowDilutionRatio = brand === "safteri" && (category === "Saft" || !category);
+    const shouldShowDilutionRatio = brand === "safteri" && category === "Saft";
 
     const hasChanges = useMemo(() => {
         if (!initial) return false;
@@ -470,11 +471,16 @@ export default function AdminProductEditPage({
 
             // Validation (do NOT throw; just show UI errors)
             let hasValidationErrors = false;
-            const nextFieldErrors: { name?: string; variants: Record<string, VariantFieldErrors> } = { variants: {} };
+            const nextFieldErrors: { name?: string; category?: string; variants: Record<string, VariantFieldErrors> } = { variants: {} };
 
             if (!name.trim()) {
                 hasValidationErrors = true;
                 nextFieldErrors.name = "Produktnamn er påkravd.";
+            }
+
+            if (!category.trim()) {
+                hasValidationErrors = true;
+                nextFieldErrors.category = "Kategori er påkravd.";
             }
 
             if (!variants.length) {
@@ -821,15 +827,25 @@ export default function AdminProductEditPage({
                                         <select
                                             id="prodCategory"
                                             value={category}
-                                            onChange={(e) => setCategory(e.target.value)}
-                                            className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-neutral-800"
+                                            onChange={(e) => {
+                                                setCategory(e.target.value);
+                                                setFieldErrors((prev) => ({ ...prev, category: undefined }));
+                                            }}
+                                            className={
+                                                "w-full rounded-[12px] border bg-white px-3 py-2 text-sm outline-none focus:border-neutral-800 " +
+                                                (fieldErrors.category ? "border-red-400" : "border-[color:var(--line)]")
+                                            }
                                         >
+                                            <option value="">Vel kategori</option>
                                             {getCategoryOptions(brand || "safteri").map((opt) => (
                                                 <option key={opt} value={opt}>
                                                     {opt}
                                                 </option>
                                             ))}
                                         </select>
+                                        {fieldErrors.category ? (
+                                            <p className="text-[11px] text-red-600">{fieldErrors.category}</p>
+                                        ) : null}
                                     </div>
 
                                     <div className="space-y-1">
