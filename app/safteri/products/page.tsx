@@ -81,7 +81,7 @@ function ProductCard({ product }: { product: any }) {
             className="group block cursor-pointer rounded-[24px] bg-[color:var(--accentSurface)] p-6 ring-1 ring-black/10 transition hover:-translate-y-0.5 hover:shadow-[0_14px_40px_rgba(0,0,0,0.06)] hover:bg-[color:var(--accentSoft)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/20"
             aria-label={product.name}
         >
-            <div className="relative aspect-[4/3] overflow-hidden rounded-[16px] bg-neutral-100">
+            <div className="relative aspect-square overflow-hidden rounded-[16px] bg-neutral-100">
                 {badgeText ? (
                     <div className="absolute left-3 top-3 z-10 rounded-full border border-[color:var(--accentSoft)] bg-[color:var(--paper)] px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-neutral-800">
                         {badgeText}
