@@ -22,6 +22,7 @@ export default function AdminProductsPage() {
 
     const [query, setQuery] = useState("");
     const [brandFilter, setBrandFilter] = useState<"alle" | ProductBrand>("alle");
+    const [categoryFilter, setCategoryFilter] = useState("alle");
 
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
@@ -32,6 +33,28 @@ export default function AdminProductsPage() {
     const [variantsLoadingId, setVariantsLoadingId] = useState<string | null>(null);
     const [thumbnailById, setThumbnailById] = useState<Record<string, string>>({});
     const [thumbLoadingIds, setThumbLoadingIds] = useState<Set<string>>(new Set());
+
+    const SAFT_CATEGORY_OPTIONS = ["Saft", "Sylte", "Gelé", "Saus", "Frisk", "Rein"];
+    const BRYGGERI_CATEGORY_OPTIONS = ["Øl", "Sider"];
+
+    function normalizeCategory(value: unknown) {
+        return String(value ?? "").trim();
+    }
+
+    function getCategoryOptionsForBrand() {
+        if (brandFilter === "safteri") return SAFT_CATEGORY_OPTIONS;
+        if (brandFilter === "bryggeri") return BRYGGERI_CATEGORY_OPTIONS;
+
+        const found = Array.from(
+            new Set(
+                products
+                    .map((product) => normalizeCategory(product?.category))
+                    .filter((category) => category.length > 0)
+            )
+        );
+
+        return found.sort((a, b) => a.localeCompare(b, "nb"));
+    }
 
     function formatNok(v: number) {
         return new Intl.NumberFormat("nb-NO", {
@@ -123,6 +146,10 @@ export default function AdminProductsPage() {
             if (brandFilter === "alle") return true;
             return String(p?.brand ?? "") === brandFilter;
         })
+        .filter((p) => {
+            if (categoryFilter === "alle") return true;
+            return normalizeCategory(p?.category) === categoryFilter;
+        })
         .slice()
         .sort((a, b) => String(a?.name ?? "").localeCompare(String(b?.name ?? ""), "nb"));
 
@@ -131,6 +158,8 @@ export default function AdminProductsPage() {
         safteri: products.filter((p) => String(p?.brand ?? "") === "safteri").length,
         bryggeri: products.filter((p) => String(p?.brand ?? "") === "bryggeri").length,
     };
+
+    const categoryOptions = getCategoryOptionsForBrand();
 
     async function ensureVariantsLoaded(productId: string) {
         // already cached
@@ -319,7 +348,10 @@ export default function AdminProductsPage() {
                                         <button
                                             key={b.key}
                                             type="button"
-                                            onClick={() => setBrandFilter(b.key)}
+                                            onClick={() => {
+                                                setBrandFilter(b.key);
+                                                setCategoryFilter("alle");
+                                            }}
                                             className={`rounded-full border px-3 py-1.5 text-[11px] transition-colors ${brandFilter === b.key
                                                 ? "border-neutral-900 bg-neutral-900 text-[color:var(--paper)]"
                                                 : "border-[color:var(--line)] bg-white text-neutral-700 hover:bg-black/5"
@@ -328,6 +360,23 @@ export default function AdminProductsPage() {
                                             {b.label}
                                         </button>
                                     ))}
+                                </div>
+
+                                <div className="w-full md:w-[180px]">
+                                    <label className="sr-only" htmlFor="categoryFilter">Kategori</label>
+                                    <select
+                                        id="categoryFilter"
+                                        value={categoryFilter}
+                                        onChange={(e) => setCategoryFilter(e.target.value)}
+                                        className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-3 py-2 text-xs text-neutral-900 outline-none focus:border-neutral-800"
+                                    >
+                                        <option value="alle">Alle kategoriar</option>
+                                        {categoryOptions.map((category) => (
+                                            <option key={category} value={category}>
+                                                {category}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
 
