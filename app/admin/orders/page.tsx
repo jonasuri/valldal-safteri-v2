@@ -215,6 +215,10 @@ export default function AdminOrdersPage() {
     const pendingApprovalCount = orders.filter((order) => order.status === "change_requested").length;
     const notInvoicedCount = notInvoicedHistoricalOrders.length;
     const sortedOrders = sortOrders(filterOrders(activeOrders, activeFilter));
+    const appBadgeCount =
+        orders.filter((order) => order.status === "new").length +
+        pendingApprovalCount +
+        activeRestorderCount;
 
     useEffect(() => {
         const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
@@ -300,6 +304,29 @@ export default function AdminOrdersPage() {
         return () => unsubscribe();
     }, []);
 
+    useEffect(() => {
+        if (typeof navigator === "undefined") return;
+
+        const nav = navigator as Navigator & {
+            setAppBadge?: (count?: number) => Promise<void>;
+            clearAppBadge?: () => Promise<void>;
+        };
+
+        async function updateBadge() {
+            try {
+                if (appBadgeCount > 0 && nav.setAppBadge) {
+                    await nav.setAppBadge(appBadgeCount);
+                } else if (nav.clearAppBadge) {
+                    await nav.clearAppBadge();
+                }
+            } catch {
+                // Badge API not supported.
+            }
+        }
+
+        void updateBadge();
+    }, [appBadgeCount]);
+
     return (
         <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
             <div className="mx-auto max-w-7xl px-6 py-10">
@@ -308,9 +335,17 @@ export default function AdminOrdersPage() {
                         <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">
                             Admin
                         </p>
-                        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-                            Ordre
-                        </h1>
+                        <div className="mt-2 flex items-center gap-3">
+                            <h1 className="text-3xl font-semibold tracking-tight">
+                                Ordre
+                            </h1>
+
+                            {appBadgeCount > 0 ? (
+                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 md:hidden">
+                                    {appBadgeCount} krev handling
+                                </span>
+                            ) : null}
+                        </div>
                         <p className="mt-3 max-w-2xl text-sm leading-7 text-neutral-600">
                             Sjå nye B2B-bestillingar, oppdater status og handter eventuelle endringar som må godkjennast av kunden.
                         </p>
