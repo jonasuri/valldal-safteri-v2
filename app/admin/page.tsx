@@ -11,7 +11,7 @@ import {
 } from "firebase/auth";
 import { db, storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 
 type DayKey =
     | "monday"
@@ -72,14 +72,53 @@ const defaultOpeningHours: OpeningHours = {
     sunday: { from: "", to: "" },
 };
 
+const ADMIN_EMAILS = [
+    "post@valldalsafteri.no",
+];
+
+function isAdminUser(user: User | null) {
+    const email = user?.email?.trim().toLowerCase();
+    if (!email) return false;
+    return ADMIN_EMAILS.map((adminEmail) => adminEmail.trim().toLowerCase()).includes(email);
+}
+
+function orderNeedsAdminAction(data: any) {
+    const status = typeof data.status === "string" ? data.status : "new";
+    const approvalResponse = typeof data.approval?.response === "string" ? data.approval.response : "";
+    const approvalStatus = typeof data.approval?.status === "string" ? data.approval.status : "";
+
+    const isHistorical = ["picked_up", "shipped", "delivered", "cancelled"].includes(status);
+
+    if (isHistorical) return false;
+
+    const approvalSeenAt = data.approval?.adminSeenAt;
+    const orderNumber = typeof data.orderNumber === "string" ? data.orderNumber.trim() : "";
+
+    const hasCustomerResponse = approvalStatus === "answered" || approvalResponse.trim().length > 0;
+
+    if (status === "new" && !orderNumber) {
+        return true;
+    }
+
+    if (hasCustomerResponse && !approvalSeenAt) {
+        return true;
+    }
+
+    return false;
+}
+
 export default function AdminPage() {
     const [user, setUser] = useState<User | null>(null);
+    const isAdmin = isAdminUser(user);
     const [checkingAuth, setCheckingAuth] = useState(true);
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const [orderActionCount, setOrderActionCount] = useState(0);
+    const [changeRequestCount, setChangeRequestCount] = useState(0);
 
     const [openingSeason, setOpeningSeason] = useState("");
     const [openingHours, setOpeningHours] = useState<OpeningHours>(defaultOpeningHours);
@@ -211,6 +250,39 @@ export default function AdminPage() {
         });
         return () => unsub();
     }, []);
+
+    useEffect(() => {
+        if (!isAdmin) {
+            setOrderActionCount(0);
+            setChangeRequestCount(0);
+            return;
+        }
+
+        const unsubscribe = onSnapshot(collection(db, "orders"), (snapshot) => {
+            const count = snapshot.docs.filter((orderDoc) => orderNeedsAdminAction(orderDoc.data())).length;
+            setOrderActionCount(count);
+        });
+
+        return () => unsubscribe();
+    }, [isAdmin]);
+
+    useEffect(() => {
+        if (!isAdmin) {
+            setChangeRequestCount(0);
+            return;
+        }
+
+        const requestsQuery = query(
+            collection(db, "orderChangeRequests"),
+            where("status", "==", "pending")
+        );
+
+        const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+            setChangeRequestCount(snapshot.size);
+        });
+
+        return () => unsubscribe();
+    }, [isAdmin]);
 
     useEffect(() => {
         if (!user) return;
@@ -828,7 +900,40 @@ export default function AdminPage() {
         );
     }
 
-    if (user) {
+    if (user && !isAdmin) {
+        return (
+            <main className="min-h-screen bg-[color:var(--paper)] text-neutral-900">
+                <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-20">
+                    <div className="rounded-[24px] border border-[color:var(--line)] bg-white/80 p-6 text-center shadow-sm">
+                        <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+                            Admin
+                        </p>
+
+                        <h1
+                            className="mt-3 text-2xl tracking-tight text-neutral-900"
+                            style={{ fontFamily: "var(--font-serif)" }}
+                        >
+                            Ingen admintilgang
+                        </h1>
+
+                        <p className="mt-3 text-sm leading-6 text-neutral-600">
+                            Du er logga inn, men denne brukaren har ikkje tilgang til administrasjonssida.
+                        </p>
+
+                        <button
+                            type="button"
+                            onClick={handleLogout}
+                            className="mt-6 inline-flex items-center justify-center rounded-full border border-[color:var(--line)] px-4 py-2 text-xs text-neutral-700 hover:bg-black/5"
+                        >
+                            Logg ut
+                        </button>
+                    </div>
+                </div>
+            </main>
+        );
+    }
+
+    if (user && isAdmin) {
         const normalizedSearch = outletSearchTerm.trim().toLowerCase();
         const filteredOutlets = normalizedSearch
             ? outlets.filter((o) => {
@@ -854,7 +959,38 @@ export default function AdminPage() {
                             </p>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                                href="/admin/orders"
+                                className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] bg-neutral-900 px-4 py-1.5 text-xs text-[color:var(--paper)] hover:bg-neutral-800"
+                            >
+                                <span>Ordre</span>
+                                {orderActionCount > 0 ? (
+                                    <span className="ml-2 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1.5 text-[10px] font-semibold leading-none text-white">
+                                        {orderActionCount > 99 ? "99+" : orderActionCount}
+                                    </span>
+                                ) : null}
+                                {changeRequestCount > 0 ? (
+                                    <span className="ml-1 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold leading-none text-white">
+                                        {changeRequestCount > 99 ? "99+" : changeRequestCount}
+                                    </span>
+                                ) : null}
+                            </Link>
+
+                            <Link
+                                href="/admin/pickups"
+                                className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] px-4 py-1.5 text-xs text-neutral-700 hover:bg-black/5"
+                            >
+                                Hentingar
+                            </Link>
+
+                            <Link
+                                href="/admin/customers"
+                                className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] px-4 py-1.5 text-xs text-neutral-700 hover:bg-black/5"
+                            >
+                                Kundar
+                            </Link>
+
                             <Link
                                 href="/admin/products"
                                 className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] px-4 py-1.5 text-xs text-neutral-700 hover:bg-black/5"

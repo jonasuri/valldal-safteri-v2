@@ -192,6 +192,12 @@ export default function HomePage() {
             <Link className="hover:text-neutral-900" href="/bryggeri">
               Bryggeri <span className="ml-1 text-xs opacity-70">18+</span>
             </Link>
+            <Link
+              className="rounded-full border border-neutral-300 px-3 py-1 text-neutral-700 transition hover:border-neutral-500 hover:text-neutral-900"
+              href="/account"
+            >
+              Kundeportal
+            </Link>
           </nav>
         </div>
       </header>
