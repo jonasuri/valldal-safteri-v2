@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Copy, Check } from "lucide-react";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -46,6 +47,21 @@ function getVariantSortIndex(label: string) {
 export default function ProductListPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [selectedCategory, setSelectedCategory] = useState("all");
+    const [copiedKey, setCopiedKey] = useState("");
+
+    async function copyText(key: string, text: string) {
+        if (!text) return;
+
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedKey(key);
+            window.setTimeout(() => {
+                setCopiedKey((current) => (current === key ? "" : current));
+            }, 1200);
+        } catch {
+            // Ignore clipboard errors.
+        }
+    }
 
     useEffect(() => {
         async function fetchProducts() {
@@ -246,7 +262,18 @@ export default function ProductListPage() {
                                             : "")
                                     }
                                 >
-                                    {row.itemNumber}
+                                    <div className="flex items-center gap-2">
+                                        <span>{row.itemNumber}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => copyText(`item-${i}`, row.itemNumber)}
+                                            className="text-neutral-400 transition hover:text-neutral-700"
+                                            title="Kopier varenummer"
+                                            aria-label="Kopier varenummer"
+                                        >
+                                            {copiedKey === `item-${i}` ? <Check size={14} /> : <Copy size={14} />}
+                                        </button>
+                                    </div>
                                 </td>
                                 <td
                                     className={
@@ -256,7 +283,18 @@ export default function ProductListPage() {
                                             : "")
                                     }
                                 >
-                                    {row.barcode}
+                                    <div className="flex items-center gap-2">
+                                        <span>{row.barcode}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => copyText(`barcode-${i}`, row.barcode)}
+                                            className="text-neutral-400 transition hover:text-neutral-700"
+                                            title="Kopier strekkode"
+                                            aria-label="Kopier strekkode"
+                                        >
+                                            {copiedKey === `barcode-${i}` ? <Check size={14} /> : <Copy size={14} />}
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
