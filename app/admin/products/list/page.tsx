@@ -206,18 +206,58 @@ export default function ProductListPage() {
                         {rows.map((row, i) => (
                             <tr
                                 key={`${row.category}-${row.productName}-${row.variantLabel}-${i}`}
-                                className={
-                                    (i % 2 === 0 ? "bg-white " : "bg-neutral-50 ") +
-                                    (i > 0 && rows[i - 1].productName !== row.productName
-                                        ? "border-t-4 border-neutral-200"
-                                        : "")
-                                }
+                                className={i % 2 === 0 ? "bg-white" : "bg-neutral-50"}
                             >
-                                <td className="px-4 py-2">{row.category}</td>
-                                <td className="px-4 py-2">{row.productName}</td>
-                                <td className="px-4 py-2">{row.variantLabel}</td>
-                                <td className="px-4 py-2">{row.itemNumber}</td>
-                                <td className="px-4 py-2">{row.barcode}</td>
+                                <td
+                                    className={
+                                        "px-4 py-2 " +
+                                        (i > 0 && rows[i - 1].productName !== row.productName
+                                            ? "border-t border-neutral-300"
+                                            : "")
+                                    }
+                                >
+                                    {row.category}
+                                </td>
+                                <td
+                                    className={
+                                        "px-4 py-2 " +
+                                        (i > 0 && rows[i - 1].productName !== row.productName
+                                            ? "border-t border-neutral-300"
+                                            : "")
+                                    }
+                                >
+                                    {row.productName}
+                                </td>
+                                <td
+                                    className={
+                                        "px-4 py-2 " +
+                                        (i > 0 && rows[i - 1].productName !== row.productName
+                                            ? "border-t border-neutral-300"
+                                            : "")
+                                    }
+                                >
+                                    {row.variantLabel}
+                                </td>
+                                <td
+                                    className={
+                                        "px-4 py-2 " +
+                                        (i > 0 && rows[i - 1].productName !== row.productName
+                                            ? "border-t border-neutral-300"
+                                            : "")
+                                    }
+                                >
+                                    {row.itemNumber}
+                                </td>
+                                <td
+                                    className={
+                                        "px-4 py-2 " +
+                                        (i > 0 && rows[i - 1].productName !== row.productName
+                                            ? "border-t border-neutral-300"
+                                            : "")
+                                    }
+                                >
+                                    {row.barcode}
+                                </td>
                             </tr>
                         ))}
                         {rows.length === 0 && (
