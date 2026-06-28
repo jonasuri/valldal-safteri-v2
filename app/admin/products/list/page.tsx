@@ -206,7 +206,12 @@ export default function ProductListPage() {
                         {rows.map((row, i) => (
                             <tr
                                 key={`${row.category}-${row.productName}-${row.variantLabel}-${i}`}
-                                className={i % 2 === 0 ? "bg-white" : "bg-neutral-50"}
+                                className={
+                                    (i % 2 === 0 ? "bg-white " : "bg-neutral-50 ") +
+                                    (i > 0 && rows[i - 1].productName !== row.productName
+                                        ? "border-t-4 border-neutral-200"
+                                        : "")
+                                }
                             >
                                 <td className="px-4 py-2">{row.category}</td>
                                 <td className="px-4 py-2">{row.productName}</td>
