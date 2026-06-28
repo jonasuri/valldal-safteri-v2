@@ -18,6 +18,31 @@ interface Product {
     variants: Variant[];
 }
 
+const VARIANT_ORDER = [
+    "80 ml",
+    "195 ml",
+    "390 ml",
+    "1 kg",
+    "2,5 kg",
+    "7,5 kg",
+    "80 g",
+    "250 ml",
+    "0,33 l",
+    "0,5 l",
+    "0,7 l",
+    "0,75 l",
+    "2,5 l",
+    "5 l",
+];
+
+function getVariantSortIndex(label: string) {
+    const index = VARIANT_ORDER.findIndex(
+        (value) => value.toLowerCase() === String(label).trim().toLowerCase()
+    );
+
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
 export default function ProductListPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [selectedCategory, setSelectedCategory] = useState("all");
@@ -105,7 +130,11 @@ export default function ProductListPage() {
         if (a.productName !== b.productName) {
             return a.productName.localeCompare(b.productName);
         }
-        return a.variantLabel.localeCompare(b.variantLabel);
+        const indexDiff = getVariantSortIndex(a.variantLabel) - getVariantSortIndex(b.variantLabel);
+        if (indexDiff !== 0) {
+            return indexDiff;
+        }
+        return a.variantLabel.localeCompare(b.variantLabel, "nb");
     });
 
     return (
