@@ -34,7 +34,7 @@ export default function AdminProductsPage() {
     const [thumbnailById, setThumbnailById] = useState<Record<string, string>>({});
     const [thumbLoadingIds, setThumbLoadingIds] = useState<Set<string>>(new Set());
 
-    const SAFT_CATEGORY_OPTIONS = ["Saft", "Sylte", "Gelé", "Saus", "Frisk", "Rein"];
+    const SAFT_CATEGORY_OPTIONS = ["Sylte", "Gelé", "Saus", "Saft", "Rein", "Frisk", "Iskrem"];
     const BRYGGERI_CATEGORY_OPTIONS = ["Øl", "Sider"];
 
     function normalizeCategory(value: unknown) {
@@ -294,7 +294,7 @@ export default function AdminProductsPage() {
                             Produkter
                         </h1>
                         <p className="mt-2 max-w-prose text-xs text-neutral-600">
-                            Administrer produktbiblioteket – prisar, SKU, kategoriar, storleikar og bilete.
+                            Administrer produktbiblioteket – prisar, varenummer, strekkodar, kategoriar, storleikar og bilete.
                         </p>
                     </div>
 
@@ -304,6 +304,13 @@ export default function AdminProductsPage() {
                             className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700 transition hover:bg-emerald-100"
                         >
                             Prisjustering →
+                        </Link>
+
+                        <Link
+                            href="/admin/products/list"
+                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] bg-white px-4 py-2 text-xs text-neutral-700 hover:bg-black/5"
+                        >
+                            Vareliste →
                         </Link>
 
                         <button
@@ -334,7 +341,7 @@ export default function AdminProductsPage() {
                                         id="productSearch"
                                         value={query}
                                         onChange={(e) => setQuery(e.target.value)}
-                                        placeholder="Søk etter namn, kategori, SKU eller slug …"
+                                        placeholder="Søk etter namn, kategori, varenummer, strekkode eller slug …"
                                         className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-3 py-2 text-xs text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-neutral-800"
                                     />
                                 </div>
@@ -772,3 +779,15 @@ export default function AdminProductsPage() {
         </main>
     );
 }
+
+const CATEGORY_ITEM_SERIES: Record<string, number> = {
+    Sylte: 10000,
+    Gelé: 11000,
+    Saus: 12000,
+    Saft: 13000,
+    Rein: 14000,
+    Frisk: 15000,
+    Iskrem: 16000,
+    Øl: 20000,
+    Sider: 21000,
+};

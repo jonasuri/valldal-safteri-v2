@@ -7,9 +7,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import { db, storage } from "@/lib/firebase";
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
-import { deleteDoc, deleteField, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
 
 type ProductDoc = {
+    id?: string;
     name?: string;
     slug?: string;
     brand?: "safteri" | "bryggeri";
@@ -18,13 +19,15 @@ type ProductDoc = {
     longDescription?: string;
     active?: boolean;
     defaultVariantId?: string;
+    itemFamilySuffix?: string;
     thumbnailUrl?: string;
     imageUrl?: string;
     image?: string;
     variants?: Array<{
         id: string;
         label: string;
-        sku: string;
+        itemNumber?: string;
+        barcode?: string;
         price: number;
         prices?: {
             retail?: number;
@@ -132,8 +135,220 @@ async function resizeImageBeforeUpload(file: File): Promise<File> {
     }
 }
 
-const SAFT_CATEGORY_OPTIONS = ["Saft", "Sylte", "Gelé", "Saus", "Frisk", "Rein"] as const;
+const SAFT_CATEGORY_OPTIONS = ["Sylte", "Gelé", "Saus", "Saft", "Rein", "Frisk", "Iskrem"] as const;
 const BRYGGERI_CATEGORY_OPTIONS = ["Øl", "Sider"] as const;
+
+const CATEGORY_ITEM_SERIES: Record<string, number> = {
+    Sylte: 10000,
+    Gelé: 11000,
+    Saus: 12000,
+    Saft: 13000,
+    Rein: 14000,
+    Frisk: 15000,
+    Iskrem: 16000,
+    Øl: 20000,
+    Sider: 21000,
+};
+
+const CATEGORY_VARIANT_OPTIONS: Record<string, string[]> = {
+    Saft: ["0,33 l", "0,7 l", "2,5 l", "5 l"],
+    Frisk: ["0,33 l"],
+    Rein: ["0,33 l", "0,75 l"],
+    Sylte: ["80 ml", "195 ml", "390 ml", "1 kg", "2,5 kg", "7,5 kg"],
+    Gelé: ["80 ml", "195 ml", "390 ml", "1 kg", "2,5 kg", "7,5 kg"],
+    Saus: ["250 ml"],
+    Iskrem: ["80 g"],
+    Øl: ["0,5 l"],
+    Sider: ["0,33 l", "0,75 l"],
+};
+
+function getItemSeries(category: string) {
+    return CATEGORY_ITEM_SERIES[category] || null;
+}
+
+function getItemSuffix(itemNumber: string, category: string) {
+    const series = getItemSeries(category);
+    const numericItemNumber = Number(String(itemNumber || "").replace(/\D/g, ""));
+
+    if (!series || !Number.isFinite(numericItemNumber) || numericItemNumber < series) return "";
+
+    const suffix = numericItemNumber - series;
+    if (suffix < 0 || suffix > 999) return "";
+
+    return String(suffix).padStart(3, "0");
+}
+
+function buildItemNumber(category: string, suffix: string) {
+    const series = getItemSeries(category);
+    const cleanSuffix = String(suffix || "").replace(/\D/g, "").slice(0, 3);
+
+    if (!series || cleanSuffix.length !== 3) return "";
+
+    return String(series + Number(cleanSuffix));
+}
+
+function getVariantOptions(category: string) {
+    return CATEGORY_VARIANT_OPTIONS[category] || [];
+}
+
+function getVariantOffset(category: string, label: string) {
+    const options = getVariantOptions(category);
+    const index = options.indexOf(label);
+
+    return index >= 0 ? index + 1 : null;
+}
+
+function allowsDuplicateVariantLabels(category: string) {
+    return category === "Sider";
+}
+
+function getFamilyBaseFromSuffix(suffix: string) {
+    const numericSuffix = Number(String(suffix || "").replace(/\D/g, ""));
+    if (!Number.isFinite(numericSuffix) || numericSuffix < 0 || numericSuffix > 999) return null;
+
+    return Math.floor(numericSuffix / 10) * 10;
+}
+
+function getFamilyBaseFromVariants(variants: Array<{ itemSuffix?: string }>) {
+    for (const variant of variants) {
+        const base = getFamilyBaseFromSuffix(variant.itemSuffix || "");
+        if (base !== null) return base;
+    }
+
+    return null;
+}
+
+function getNextAvailableFamilyBase(usedSuffixes: string[]) {
+    const usedFamilyBases = new Set(
+        usedSuffixes
+            .map((suffix) => getFamilyBaseFromSuffix(suffix))
+            .filter((value): value is number => value !== null)
+    );
+
+    for (let familyBase = 0; familyBase <= 990; familyBase += 10) {
+        if (!usedFamilyBases.has(familyBase)) return familyBase;
+    }
+
+    return 0;
+}
+
+function getNextAvailableFamilyBaseFromProducts(
+    products: ProductDoc[],
+    currentProductId: string,
+    category: string
+) {
+    const usedFamilyBases = new Set<number>();
+
+    products.forEach((product) => {
+        if (product.id === currentProductId) return;
+        if (!Array.isArray(product.variants)) return;
+
+        product.variants.forEach((variant) => {
+            const rawItemNumber = (variant as any).itemNumber;
+            const rawItemSuffix = (variant as any).itemSuffix;
+
+            const itemNumber =
+                typeof rawItemNumber === "string" || typeof rawItemNumber === "number"
+                    ? String(rawItemNumber)
+                    : "";
+
+            const itemSuffix =
+                typeof rawItemSuffix === "string" || typeof rawItemSuffix === "number"
+                    ? String(rawItemSuffix).replace(/\D/g, "").padStart(3, "0").slice(-3)
+                    : "";
+
+            const suffixFromItemNumber = itemNumber ? getItemSuffix(itemNumber, category) : "";
+            const suffix = suffixFromItemNumber || itemSuffix;
+            const familyBase = getFamilyBaseFromSuffix(suffix);
+
+            if (familyBase !== null) {
+                usedFamilyBases.add(familyBase);
+            }
+        });
+    });
+
+    for (let familyBase = 0; familyBase <= 990; familyBase += 10) {
+        if (!usedFamilyBases.has(familyBase)) return familyBase;
+    }
+
+    return 0;
+}
+
+function buildVariantNumberParts(
+    category: string,
+    label: string,
+    variants: Array<{ itemSuffix?: string }>,
+    usedSuffixes: string[]
+) {
+    const offset = getVariantOffset(category, label);
+    if (offset === null) return { itemSuffix: "", itemNumber: "" };
+
+    const existingFamilyBase =
+        variants.length > 0 ? getFamilyBaseFromVariants(variants) : null;
+    const familyBase = existingFamilyBase ?? getNextAvailableFamilyBase(usedSuffixes);
+    // If this is the first variant of a brand new product, always allocate
+    // the next free family base from the database instead of reusing 000.
+    const itemSuffix = String(familyBase + offset).padStart(3, "0");
+
+    return {
+        itemSuffix,
+        itemNumber: buildItemNumber(category, itemSuffix),
+    };
+}
+
+function buildUniqueVariantNumberPartsFromFamilySuffix(
+    category: string,
+    label: string,
+    familySuffix: string,
+    existingVariants: Array<{ itemSuffix?: string; itemNumber?: string }>
+) {
+    const offset = getVariantOffset(category, label);
+    if (offset === null) return { itemSuffix: "", itemNumber: "" };
+
+    const familyBase = getFamilyBaseFromSuffix(familySuffix);
+    if (familyBase === null) return { itemSuffix: "", itemNumber: "" };
+
+    const usedSuffixes = new Set(
+        existingVariants
+            .map((variant) => {
+                if (variant.itemSuffix) {
+                    return String(variant.itemSuffix).replace(/\D/g, "").padStart(3, "0").slice(-3);
+                }
+
+                if (variant.itemNumber) {
+                    return getItemSuffix(String(variant.itemNumber), category);
+                }
+
+                return "";
+            })
+            .filter(Boolean)
+    );
+
+    const preferredSuffix = String(familyBase + offset).padStart(3, "0");
+
+    if (!usedSuffixes.has(preferredSuffix)) {
+        return {
+            itemSuffix: preferredSuffix,
+            itemNumber: buildItemNumber(category, preferredSuffix),
+        };
+    }
+
+    for (let localOffset = 1; localOffset <= 9; localOffset += 1) {
+        const candidateSuffix = String(familyBase + localOffset).padStart(3, "0");
+
+        if (!usedSuffixes.has(candidateSuffix)) {
+            return {
+                itemSuffix: candidateSuffix,
+                itemNumber: buildItemNumber(category, candidateSuffix),
+            };
+        }
+    }
+
+    return {
+        itemSuffix: preferredSuffix,
+        itemNumber: buildItemNumber(category, preferredSuffix),
+    };
+}
 function getCategoryOptions(brand: "safteri" | "bryggeri"): string[] {
     return brand === "bryggeri"
         ? ([...BRYGGERI_CATEGORY_OPTIONS] as unknown as string[])
@@ -183,7 +398,7 @@ export default function AdminProductEditPage({
     const [saved, setSaved] = useState(false);
 
     type SaveToast = { type: "error" | "success"; message: string };
-    type VariantFieldErrors = { label?: string; sku?: string; price?: string; alcoholPercent?: string };
+    type VariantFieldErrors = { label?: string; itemNumber?: string; barcode?: string; price?: string; alcoholPercent?: string };
 
     const [saveToast, setSaveToast] = useState<SaveToast | null>(null);
     const [fieldErrors, setFieldErrors] = useState<{
@@ -201,6 +416,7 @@ export default function AdminProductEditPage({
     const [longDescription, setLongDescription] = useState("");
     const [active, setActive] = useState(true);
     const [defaultVariantId, setDefaultVariantId] = useState("");
+    const [itemFamilySuffix, setItemFamilySuffix] = useState("");
     // Thumbnail state
     const [thumbnailUrl, setThumbnailUrl] = useState<string>("");
     const [thumbUploading, setThumbUploading] = useState(false);
@@ -210,7 +426,9 @@ export default function AdminProductEditPage({
     type VariantForm = {
         id: string;
         label: string;
-        sku: string;
+        itemSuffix: string;
+        itemNumber: string;
+        barcode: string;
         price: string;
         priceTrade: string;
         priceDistributor: string;
@@ -237,6 +455,9 @@ export default function AdminProductEditPage({
 
     const [variants, setVariants] = useState<VariantForm[]>([]);
     const [variantError, setVariantError] = useState<string | null>(null);
+    const [usedItemSuffixesByCategory, setUsedItemSuffixesByCategory] = useState<Record<string, string[]>>({});
+    const [usedItemSuffixesLoaded, setUsedItemSuffixesLoaded] = useState(false);
+    const [allProductsForNumbering, setAllProductsForNumbering] = useState<ProductDoc[]>([]);
 
     // Form state for product-level fields
     const [ingredients, setIngredients] = useState("");
@@ -270,6 +491,7 @@ export default function AdminProductEditPage({
         longDescription: string;
         active: boolean;
         defaultVariantId: string;
+        itemFamilySuffix: string;
         thumbnailUrl: string;
         variants: VariantForm[];
         ingredients: string;
@@ -323,6 +545,10 @@ export default function AdminProductEditPage({
                 const loadedLongDescription = typeof data.longDescription === "string" ? data.longDescription : "";
                 const loadedActive = typeof data.active === "boolean" ? data.active : true;
                 const loadedDefaultVariantId = typeof data.defaultVariantId === "string" ? data.defaultVariantId : "";
+                const loadedItemFamilySuffix =
+                    typeof data.itemFamilySuffix === "string" || typeof data.itemFamilySuffix === "number"
+                        ? String(data.itemFamilySuffix).replace(/\D/g, "").padStart(3, "0").slice(-3)
+                        : "";
                 const loadedThumb =
                     normalizeImageUrl(data.thumbnailUrl) ||
                     normalizeImageUrl(data.imageUrl) ||
@@ -336,14 +562,23 @@ export default function AdminProductEditPage({
                                 v &&
                                 typeof v.id === "string" &&
                                 typeof v.label === "string" &&
-                                typeof v.sku === "string" &&
                                 typeof v.price === "number" &&
                                 Number.isFinite(v.price)
                         )
                         .map((v) => ({
                             id: v.id,
                             label: v.label,
-                            sku: v.sku,
+                            itemSuffix: getItemSuffix(
+                                typeof (v as any).itemNumber === "string" || typeof (v as any).itemNumber === "number"
+                                    ? String((v as any).itemNumber)
+                                    : "",
+                                loadedCategory
+                            ),
+                            itemNumber:
+                                typeof (v as any).itemNumber === "string" || typeof (v as any).itemNumber === "number"
+                                    ? String((v as any).itemNumber)
+                                    : "",
+                            barcode: typeof (v as any).barcode === "string" ? (v as any).barcode : "",
                             price: String(v.prices?.retail ?? v.price),
                             priceTrade: typeof v.prices?.trade === "number" ? String(v.prices.trade) : "",
                             priceDistributor: typeof v.prices?.distributor === "number" ? String(v.prices.distributor) : "",
@@ -353,7 +588,7 @@ export default function AdminProductEditPage({
                         }));
                 }
                 if (!loadedVariants.length) {
-                    loadedVariants = [{ id: String(Date.now()), label: "", sku: "", price: "", priceTrade: "", priceDistributor: "", alcoholPercent: "", active: true }];
+                    loadedVariants = [{ id: String(Date.now()), label: "", itemSuffix: "", itemNumber: "", barcode: "", price: "", priceTrade: "", priceDistributor: "", alcoholPercent: "", active: true }];
                 }
 
                 const resolvedDefaultVariantId = loadedVariants.some((v) => v.id === loadedDefaultVariantId)
@@ -397,6 +632,7 @@ export default function AdminProductEditPage({
                 setLongDescription(loadedLongDescription);
                 setActive(loadedActive);
                 setDefaultVariantId(resolvedDefaultVariantId);
+                setItemFamilySuffix(loadedItemFamilySuffix);
                 setThumbnailUrl(loadedThumb);
                 setVariants(loadedVariants);
                 setIngredients(loadedIngredients);
@@ -415,6 +651,7 @@ export default function AdminProductEditPage({
                     longDescription: loadedLongDescription,
                     active: loadedActive,
                     defaultVariantId: resolvedDefaultVariantId,
+                    itemFamilySuffix: loadedItemFamilySuffix,
                     thumbnailUrl: loadedThumb,
                     variants: loadedVariants,
                     ingredients: loadedIngredients,
@@ -437,6 +674,183 @@ export default function AdminProductEditPage({
         };
     }, [productId]);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadUsedItemSuffixes() {
+            try {
+                setUsedItemSuffixesLoaded(false);
+                const snapshot = await getDocs(collection(db, "products"));
+                const loadedProductsForNumbering = snapshot.docs.map((productDoc) => ({
+                    id: productDoc.id,
+                    ...(productDoc.data() as ProductDoc),
+                }));
+                const nextUsedSuffixes: Record<string, string[]> = {};
+
+                snapshot.docs.forEach((productDoc) => {
+                    const data = productDoc.data() as ProductDoc;
+                    if (productDoc.id === productId) return;
+                    const productCategory = typeof data.category === "string" ? data.category : "";
+                    if (!productCategory || !Array.isArray(data.variants)) return;
+
+                    data.variants.forEach((variant) => {
+                        const rawItemNumber = (variant as any).itemNumber;
+                        const itemNumber =
+                            typeof rawItemNumber === "string" || typeof rawItemNumber === "number"
+                                ? String(rawItemNumber)
+                                : "";
+
+                        if (!itemNumber) return;
+
+                        const suffix = getItemSuffix(itemNumber, productCategory);
+                        if (!suffix) return;
+
+                        nextUsedSuffixes[productCategory] = [
+                            ...(nextUsedSuffixes[productCategory] || []),
+                            suffix,
+                        ];
+                    });
+                });
+
+                if (!cancelled) {
+                    setAllProductsForNumbering(loadedProductsForNumbering);
+                    setUsedItemSuffixesByCategory(nextUsedSuffixes);
+                    setUsedItemSuffixesLoaded(true);
+                }
+            } catch (err) {
+                console.error("Kunne ikkje hente brukte varenummer.", err);
+                if (!cancelled) {
+                    setUsedItemSuffixesLoaded(true);
+                }
+            }
+        }
+
+        void loadUsedItemSuffixes();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [productId]);
+
+    function buildVariantNumberPartsForCurrentProduct(
+        label: string,
+        otherVariants: Array<{ itemSuffix?: string }>
+    ) {
+        const offset = getVariantOffset(category, label);
+        if (offset === null) return { itemSuffix: "", itemNumber: "" };
+
+        const existingFamilyBase =
+            otherVariants.length > 0 ? getFamilyBaseFromVariants(otherVariants) : null;
+        const familyBase = existingFamilyBase ?? getNextAvailableFamilyBaseFromProducts(
+            allProductsForNumbering,
+            productId,
+            category
+        );
+        const itemSuffix = String(familyBase + offset).padStart(3, "0");
+
+        return {
+            itemSuffix,
+            itemNumber: buildItemNumber(category, itemSuffix),
+        };
+    }
+
+    // Fetches fresh product list from Firestore for numbering
+    async function allocateItemFamilySuffixForLabel(label: string) {
+        const offset = getVariantOffset(category, label);
+        if (offset === null) return "";
+
+        const snapshot = await getDocs(collection(db, "products"));
+        const usedItemNumbers = new Set<string>();
+
+        snapshot.docs.forEach((productDoc) => {
+            if (productDoc.id === productId) return;
+
+            const productData = productDoc.data() as ProductDoc;
+            if (!Array.isArray(productData.variants)) return;
+
+            productData.variants.forEach((variant) => {
+                const rawItemNumber = (variant as any).itemNumber;
+                const itemNumber =
+                    typeof rawItemNumber === "string" || typeof rawItemNumber === "number"
+                        ? String(rawItemNumber).replace(/\D/g, "")
+                        : "";
+
+                if (itemNumber && getItemSuffix(itemNumber, category)) {
+                    usedItemNumbers.add(itemNumber);
+                }
+            });
+        });
+
+        for (let familyBase = 0; familyBase <= 990; familyBase += 10) {
+            const itemSuffix = String(familyBase + offset).padStart(3, "0");
+            const itemNumber = buildItemNumber(category, itemSuffix);
+
+            if (itemNumber && !usedItemNumbers.has(itemNumber)) {
+                return String(familyBase).padStart(3, "0");
+            }
+        }
+
+        return "";
+    }
+
+    async function ensureItemFamilySuffix(label: string) {
+        async function isFamilySuffixAvailable(familySuffix: string) {
+            const numberParts = buildVariantNumberPartsFromFamilySuffix(label, familySuffix);
+            if (!numberParts.itemNumber) return false;
+
+            const snapshot = await getDocs(collection(db, "products"));
+
+            return !snapshot.docs.some((productDoc) => {
+                if (productDoc.id === productId) return false;
+
+                const productData = productDoc.data() as ProductDoc;
+                if (!Array.isArray(productData.variants)) return false;
+
+                return productData.variants.some((variant) => {
+                    const rawItemNumber = (variant as any).itemNumber;
+                    const itemNumber =
+                        typeof rawItemNumber === "string" || typeof rawItemNumber === "number"
+                            ? String(rawItemNumber).replace(/\D/g, "")
+                            : "";
+
+                    return itemNumber === numberParts.itemNumber;
+                });
+            });
+        }
+
+        if (itemFamilySuffix.length === 3 && await isFamilySuffixAvailable(itemFamilySuffix)) {
+            return itemFamilySuffix;
+        }
+
+        const existingBase = getFamilyBaseFromVariants(variants);
+        const existingFamilySuffix = existingBase === null ? "" : String(existingBase).padStart(3, "0");
+
+        if (existingFamilySuffix && await isFamilySuffixAvailable(existingFamilySuffix)) {
+            setItemFamilySuffix(existingFamilySuffix);
+            return existingFamilySuffix;
+        }
+
+        const nextFamilySuffix = await allocateItemFamilySuffixForLabel(label);
+
+        setItemFamilySuffix(nextFamilySuffix);
+        return nextFamilySuffix;
+    }
+
+    function buildVariantNumberPartsFromFamilySuffix(label: string, familySuffix: string) {
+        const offset = getVariantOffset(category, label);
+        if (offset === null) return { itemSuffix: "", itemNumber: "" };
+
+        const familyBase = getFamilyBaseFromSuffix(familySuffix);
+        if (familyBase === null) return { itemSuffix: "", itemNumber: "" };
+
+        const itemSuffix = String(familyBase + offset).padStart(3, "0");
+
+        return {
+            itemSuffix,
+            itemNumber: buildItemNumber(category, itemSuffix),
+        };
+    }
+
     // Keep category valid when brand changes
     useEffect(() => {
         const options = getCategoryOptions(brand || "safteri");
@@ -445,6 +859,23 @@ export default function AdminProductEditPage({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [brand]);
+
+    useEffect(() => {
+        const series = getItemSeries(category);
+
+        setVariants((prev) =>
+            prev.map((variant) => {
+                const itemNumber = series && variant.itemSuffix.length === 3
+                    ? buildItemNumber(category, variant.itemSuffix)
+                    : "";
+
+                return {
+                    ...variant,
+                    itemNumber,
+                };
+            })
+        );
+    }, [category]);
 
     useEffect(() => {
         const defaultAllergens = getDefaultAllergens(brand || "safteri", category);
@@ -471,6 +902,7 @@ export default function AdminProductEditPage({
             longDescription !== initial.longDescription ||
             active !== initial.active ||
             defaultVariantId !== initial.defaultVariantId ||
+            itemFamilySuffix !== initial.itemFamilySuffix ||
             thumbnailUrl !== initial.thumbnailUrl ||
             variantsChanged ||
             ingredients !== initial.ingredients ||
@@ -480,7 +912,7 @@ export default function AdminProductEditPage({
             JSON.stringify(tasteProfile) !== JSON.stringify(initial.tasteProfile) ||
             JSON.stringify(nutrition) !== JSON.stringify(initial.nutrition)
         );
-    }, [initial, name, slug, brand, category, description, longDescription, active, defaultVariantId, thumbnailUrl, variants, ingredients, allergens, dilutionRatio, badgeText, tasteProfile, nutrition]);
+    }, [initial, name, slug, brand, category, description, longDescription, active, defaultVariantId, itemFamilySuffix, thumbnailUrl, variants, ingredients, allergens, dilutionRatio, badgeText, tasteProfile, nutrition]);
 
     async function handleSave() {
         if (!productId) return;
@@ -521,9 +953,14 @@ export default function AdminProductEditPage({
                     hasValidationErrors = true;
                     vErr.label = "Storleik er påkravd.";
                 }
-                if (!v.sku.trim()) {
+                if (!getItemSeries(category)) {
                     hasValidationErrors = true;
-                    vErr.sku = "SKU er påkravd.";
+                    nextFieldErrors.category = "Kategori må ha nummerserie.";
+                }
+
+                if (!v.itemSuffix.trim() || v.itemSuffix.length !== 3 || !v.itemNumber.trim()) {
+                    hasValidationErrors = true;
+                    vErr.itemNumber = "Skriv tre siffer for løpenummer.";
                 }
 
                 const priceVal = v.price.trim().replace(",", ".");
@@ -540,9 +977,67 @@ export default function AdminProductEditPage({
                 }
             }
 
+            // Duplicate varenummer/varenummer-in-use validation
+            const itemNumbersInThisProduct = variants
+                .map((variant) => variant.itemNumber.trim())
+                .filter(Boolean);
+            const duplicateItemNumberInThisProduct = itemNumbersInThisProduct.find(
+                (itemNumber, index) => itemNumbersInThisProduct.indexOf(itemNumber) !== index
+            );
+
+            if (duplicateItemNumberInThisProduct) {
+                hasValidationErrors = true;
+                setSaveToast({
+                    type: "error",
+                    message: `Varenummer ${duplicateItemNumberInThisProduct} er brukt fleire gongar på dette produktet.`,
+                });
+            }
+
+            try {
+                const snapshot = await getDocs(collection(db, "products"));
+                const usedItemNumbers = new Set<string>();
+
+                snapshot.docs.forEach((productDoc) => {
+                    if (productDoc.id === productId) return;
+                    const productData = productDoc.data() as ProductDoc;
+                    if (!Array.isArray(productData.variants)) return;
+
+                    productData.variants.forEach((variant) => {
+                        const rawItemNumber = (variant as any).itemNumber;
+                        const itemNumber =
+                            typeof rawItemNumber === "string" || typeof rawItemNumber === "number"
+                                ? String(rawItemNumber).trim()
+                                : "";
+
+                        if (itemNumber) {
+                            usedItemNumbers.add(itemNumber);
+                        }
+                    });
+                });
+
+                const duplicateItemNumber = itemNumbersInThisProduct.find((itemNumber) =>
+                    usedItemNumbers.has(itemNumber)
+                );
+
+                if (duplicateItemNumber) {
+                    hasValidationErrors = true;
+                    setSaveToast({
+                        type: "error",
+                        message: `Varenummer ${duplicateItemNumber} er allereie brukt på eit anna produkt.`,
+                    });
+                }
+            } catch (err) {
+                console.error("Kunne ikkje kontrollere varenummer.", err);
+                hasValidationErrors = true;
+                setSaveToast({
+                    type: "error",
+                    message: "Kunne ikkje kontrollere om varenummeret er ledig. Prøv igjen.",
+                });
+            }
+
             if (hasValidationErrors) {
                 setFieldErrors(nextFieldErrors);
-                setSaveToast({ type: "error", message: "Rett opp dei markerte felta før du lagrar." });
+                setSaveToast((current) => current || { type: "error", message: "Rett opp dei markerte felta før du lagrar." });
                 // Ensure button re-enables
                 setSaving(false);
                 return;
@@ -551,6 +1046,13 @@ export default function AdminProductEditPage({
             const resolvedDefaultVariantId = variants.some((v) => v.id === defaultVariantId)
                 ? defaultVariantId
                 : variants[0]?.id || "";
+            const resolvedItemFamilySuffix =
+                itemFamilySuffix.length === 3
+                    ? itemFamilySuffix
+                    : (() => {
+                        const base = getFamilyBaseFromVariants(variants);
+                        return base === null ? "" : String(base).padStart(3, "0");
+                    })();
 
             const nextVariants = variants.map((v) => {
                 const retailPrice = Number(v.price.trim().replace(",", "."));
@@ -558,7 +1060,8 @@ export default function AdminProductEditPage({
                 const nextVariant: {
                     id: string;
                     label: string;
-                    sku: string;
+                    itemNumber: string;
+                    barcode?: string;
                     price: number;
                     prices: {
                         retail: number;
@@ -571,13 +1074,16 @@ export default function AdminProductEditPage({
                 } = {
                     id: v.id,
                     label: v.label.trim(),
-                    sku: v.sku.trim().toUpperCase(),
+                    itemNumber: v.itemNumber.trim(),
                     price: retailPrice,
                     prices: {
                         retail: retailPrice,
                     },
                     active: typeof v.active === "boolean" ? v.active : true,
                 };
+                if (v.barcode.trim()) {
+                    nextVariant.barcode = v.barcode.trim();
+                }
 
                 if (v.priceTrade.trim()) {
                     nextVariant.prices.trade = Number(v.priceTrade.trim().replace(",", "."));
@@ -608,6 +1114,7 @@ export default function AdminProductEditPage({
                 longDescription: longDescription.trim(),
                 active: !!active,
                 defaultVariantId: resolvedDefaultVariantId,
+                itemFamilySuffix: resolvedItemFamilySuffix,
             };
 
             // Build update payload (Firestore does NOT allow `undefined` values)
@@ -671,11 +1178,14 @@ export default function AdminProductEditPage({
                 longDescription: longDescription.trim(),
                 active: !!next.active,
                 defaultVariantId: resolvedDefaultVariantId,
+                itemFamilySuffix: resolvedItemFamilySuffix,
                 thumbnailUrl: thumbnailUrl.trim(),
                 variants: variants.map((v) => ({
                     ...v,
                     label: v.label.trim(),
-                    sku: v.sku.trim().toUpperCase(),
+                    itemSuffix: v.itemSuffix.trim(),
+                    itemNumber: v.itemNumber.trim(),
+                    barcode: v.barcode.trim(),
                     price: v.price.trim(),
                     priceTrade: v.priceTrade.trim(),
                     priceDistributor: v.priceDistributor.trim(),
@@ -714,6 +1224,7 @@ export default function AdminProductEditPage({
             setLongDescription(nextInitial.longDescription);
             setActive(nextInitial.active);
             setDefaultVariantId(nextInitial.defaultVariantId);
+            setItemFamilySuffix(nextInitial.itemFamilySuffix);
             setThumbnailUrl(nextInitial.thumbnailUrl);
             setVariants(nextInitial.variants);
             setIngredients(nextInitial.ingredients);
@@ -1029,25 +1540,43 @@ export default function AdminProductEditPage({
                                         <div className="flex items-end justify-between gap-3">
                                             <div>
                                                 <label className="text-xs font-medium text-neutral-800">Variantar</label>
-                                                <p className="mt-1 text-[11px] text-neutral-500">Kvar variant har eigen storleik, SKU og pris.</p>
+                                                <p className="mt-1 text-[11px] text-neutral-500">Kvar variant har eigen storleik, varenummer, strekkode og pris.</p>
                                             </div>
                                             <button
                                                 type="button"
-                                                onClick={() => {
+                                                onClick={async () => {
                                                     const id = String(Date.now());
+                                                    if (!usedItemSuffixesLoaded || !category) return;
+                                                    // New variant rows start empty (no preselected size)
+                                                    const nextLabel = "";
+                                                    const numberParts = { itemSuffix: "", itemNumber: "" };
+
                                                     setVariants((prev) => {
                                                         if (!prev.length && !defaultVariantId) {
                                                             setDefaultVariantId(id);
                                                         }
+
                                                         return [
                                                             ...prev,
-                                                            { id, label: "", sku: "", price: "", priceTrade: "", priceDistributor: "", alcoholPercent: "", active: true },
+                                                            {
+                                                                id,
+                                                                label: nextLabel,
+                                                                itemSuffix: numberParts.itemSuffix,
+                                                                itemNumber: numberParts.itemNumber,
+                                                                barcode: "",
+                                                                price: "",
+                                                                priceTrade: "",
+                                                                priceDistributor: "",
+                                                                alcoholPercent: "",
+                                                                active: true,
+                                                            },
                                                         ];
                                                     });
                                                 }}
-                                                className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] bg-white px-4 py-2 text-[11px] font-medium text-neutral-800 hover:bg-black/5"
+                                                disabled={!usedItemSuffixesLoaded || !category}
+                                                className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] bg-white px-4 py-2 text-[11px] font-medium text-neutral-800 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
                                             >
-                                                + Legg til variant
+                                                {!usedItemSuffixesLoaded ? "Lastar varenummer …" : "+ Legg til variant"}
                                             </button>
                                         </div>
                                         {variantError ? (
@@ -1183,57 +1712,114 @@ export default function AdminProductEditPage({
                                                         <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
                                                             <div className="space-y-1">
                                                                 <label className="text-[11px] font-medium text-neutral-700">Storleik</label>
-                                                                <input
-                                                                    type="text"
+                                                                <select
+                                                                    disabled={!usedItemSuffixesLoaded || !category}
                                                                     value={v.label}
-                                                                    onChange={(e) => {
-                                                                        const val = e.target.value;
+                                                                    onChange={async (e) => {
+                                                                        const label = e.target.value;
+                                                                        if (!usedItemSuffixesLoaded) return;
                                                                         setSaveToast(null);
                                                                         setFieldErrors((prev) => {
                                                                             const next = { ...prev };
                                                                             const vErr = { ...(next.variants[v.id] || {}) };
                                                                             delete vErr.label;
+                                                                            delete vErr.itemNumber;
                                                                             next.variants = { ...next.variants, [v.id]: vErr };
                                                                             return next;
                                                                         });
-                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, label: val } : x)));
+                                                                        const familySuffix = await ensureItemFamilySuffix(label);
+                                                                        const variantsWithoutCurrent = variants.filter((variant) => variant.id !== v.id);
+                                                                        const numberParts = buildUniqueVariantNumberPartsFromFamilySuffix(
+                                                                            category,
+                                                                            label,
+                                                                            familySuffix,
+                                                                            variantsWithoutCurrent
+                                                                        );
+
+                                                                        setVariants((prev) =>
+                                                                            prev.map((x) =>
+                                                                                x.id === v.id
+                                                                                    ? {
+                                                                                        ...x,
+                                                                                        label,
+                                                                                        itemSuffix: numberParts.itemSuffix,
+                                                                                        itemNumber: numberParts.itemNumber,
+                                                                                    }
+                                                                                    : x
+                                                                            )
+                                                                        );
                                                                     }}
                                                                     className={
-                                                                        "w-full rounded-[12px] border bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800 " +
+                                                                        "w-full rounded-[12px] border bg-white px-2 py-2 text-xs outline-none focus:border-neutral-800 disabled:cursor-not-allowed disabled:opacity-50 " +
                                                                         (fieldErrors.variants[v.id]?.label ? "border-red-400" : "border-[color:var(--line)]")
                                                                     }
-                                                                    placeholder='T.d. "390 ml"'
-                                                                />
+                                                                >
+                                                                    <option value="">Vel storleik</option>
+                                                                    {getVariantOptions(category)
+                                                                        .filter((option) =>
+                                                                            allowsDuplicateVariantLabels(category) ||
+                                                                            option === v.label ||
+                                                                            !variants.some((variant) => variant.id !== v.id && variant.label === option)
+                                                                        )
+                                                                        .map((option) => (
+                                                                            <option key={option} value={option}>
+                                                                                {option}
+                                                                            </option>
+                                                                        ))}
+                                                                </select>
                                                                 {fieldErrors.variants[v.id]?.label ? (
                                                                     <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.label}</p>
                                                                 ) : null}
                                                             </div>
                                                             <div className="space-y-1">
-                                                                <label className="text-[11px] font-medium text-neutral-700">SKU</label>
+                                                                <label className="text-[11px] font-medium text-neutral-700">Varenummer</label>
+                                                                <div className="flex overflow-hidden rounded-[12px] border border-[color:var(--line)] bg-white focus-within:border-neutral-800">
+                                                                    <div className="flex min-w-[70px] items-center justify-center border-r border-[color:var(--line)] bg-neutral-50 px-2 text-xs text-neutral-500">
+                                                                        {getItemSeries(category) || "—"}
+                                                                    </div>
+                                                                    <input
+                                                                        type="text"
+                                                                        inputMode="numeric"
+                                                                        value={v.itemSuffix}
+                                                                        onChange={(e) => {
+                                                                            const suffix = e.target.value.replace(/\D/g, "").slice(0, 3);
+                                                                            const itemNumber = buildItemNumber(category, suffix);
+                                                                            setSaveToast(null);
+                                                                            setFieldErrors((prev) => {
+                                                                                const next = { ...prev };
+                                                                                const vErr = { ...(next.variants[v.id] || {}) };
+                                                                                delete vErr.itemNumber;
+                                                                                next.variants = { ...next.variants, [v.id]: vErr };
+                                                                                return next;
+                                                                            });
+                                                                            setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, itemSuffix: suffix, itemNumber } : x)));
+                                                                        }}
+                                                                        className="w-full bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400"
+                                                                        placeholder="001"
+                                                                    />
+                                                                </div>
+                                                                <div className="text-[11px] text-neutral-500">
+                                                                    Ferdig varenummer: {v.itemNumber || "—"}
+                                                                </div>
+                                                                {fieldErrors.variants[v.id]?.itemNumber ? (
+                                                                    <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.itemNumber}</p>
+                                                                ) : null}
+                                                            </div>
+
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-medium text-neutral-700">Strekkode</label>
                                                                 <input
                                                                     type="text"
-                                                                    value={v.sku}
+                                                                    inputMode="numeric"
+                                                                    value={v.barcode}
                                                                     onChange={(e) => {
-                                                                        const val = e.target.value.toUpperCase();
+                                                                        const val = e.target.value.replace(/\D/g, "").slice(0, 14);
                                                                         setSaveToast(null);
-                                                                        setFieldErrors((prev) => {
-                                                                            const next = { ...prev };
-                                                                            const vErr = { ...(next.variants[v.id] || {}) };
-                                                                            delete vErr.sku;
-                                                                            next.variants = { ...next.variants, [v.id]: vErr };
-                                                                            return next;
-                                                                        });
-                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, sku: val } : x)));
+                                                                        setVariants((prev) => prev.map((x) => (x.id === v.id ? { ...x, barcode: val } : x)));
                                                                     }}
-                                                                    className={
-                                                                        "w-full rounded-[12px] border bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800 " +
-                                                                        (fieldErrors.variants[v.id]?.sku ? "border-red-400" : "border-[color:var(--line)]")
-                                                                    }
-                                                                    placeholder="T.d. SYLTE-JORDBAR-390"
+                                                                    className="w-full rounded-[12px] border border-[color:var(--line)] bg-white px-2 py-2 text-xs outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+                                                                    placeholder="Valfritt"
                                                                 />
-                                                                {fieldErrors.variants[v.id]?.sku ? (
-                                                                    <p className="mt-1 text-[11px] text-red-600">{fieldErrors.variants[v.id]?.sku}</p>
-                                                                ) : null}
                                                             </div>
                                                             {shouldShowAlcoholPercent ? (
                                                                 <div className="space-y-1">
