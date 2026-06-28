@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Copy, Check } from "lucide-react";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -42,6 +41,23 @@ function getVariantSortIndex(label: string) {
     );
 
     return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function CopyIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+    );
+}
+
+function CheckIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6 9 17l-5-5" />
+        </svg>
+    );
 }
 
 export default function ProductListPage() {
@@ -271,7 +287,7 @@ export default function ProductListPage() {
                                             title="Kopier varenummer"
                                             aria-label="Kopier varenummer"
                                         >
-                                            {copiedKey === `item-${i}` ? <Check size={14} /> : <Copy size={14} />}
+                                            {copiedKey === `item-${i}` ? <CheckIcon /> : <CopyIcon />}
                                         </button>
                                     </div>
                                 </td>
@@ -292,7 +308,7 @@ export default function ProductListPage() {
                                             title="Kopier strekkode"
                                             aria-label="Kopier strekkode"
                                         >
-                                            {copiedKey === `barcode-${i}` ? <Check size={14} /> : <Copy size={14} />}
+                                            {copiedKey === `barcode-${i}` ? <CheckIcon /> : <CopyIcon />}
                                         </button>
                                     </div>
                                 </td>
