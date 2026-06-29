@@ -232,12 +232,21 @@ export default function NewPickupPage() {
                         </p>
                     </div>
 
-                    <Link
-                        href="/admin"
-                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
-                    >
-                        Til admin
-                    </Link>
+                    <div className="flex flex-wrap gap-2">
+                        <Link
+                            href="/admin/pickups"
+                            className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                        >
+                            ← Avbryt
+                        </Link>
+
+                        <Link
+                            href="/admin"
+                            className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                        >
+                            Til admin
+                        </Link>
+                    </div>
                 </div>
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.4fr_0.7fr]">
@@ -402,6 +411,7 @@ export default function NewPickupPage() {
                     </section>
 
                     <ProductOrderPicker
+                        customerId={selectedCustomerId || undefined}
                         customerType={activeCustomerType}
                         mode="pickup"
                         lines={lines}

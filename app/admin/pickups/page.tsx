@@ -24,6 +24,7 @@ type PickupRow = {
     customerDisplayName: string;
     customerCompanyName: string;
     pickedUpBy: string;
+    pickupDateValue: Date | null;
     pickupDateLabel: string;
     lines: PickupLine[];
     lineCount: number;
@@ -46,6 +47,7 @@ type PickupDateLine = PickupLine & {
 
 type PickupDateGroup = {
     dateLabel: string;
+    dateValue: Date | null;
     pickedUpByNames: string[];
     lines: PickupDateLine[];
     totalExVat: number;
@@ -60,12 +62,42 @@ function formatCurrency(value: number) {
     }).format(value);
 }
 
-function formatDate(value: any) {
-    if (value?.toDate) {
-        return value.toDate().toLocaleDateString("nb-NO");
+function getPickupDate(value: any): Date | null {
+    if (value?.toDate) return value.toDate();
+
+    if (value instanceof Date) return value;
+
+    if (typeof value === "string") {
+        const match = value
+            .trim()
+            .match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+
+        if (match) {
+            const [, day, month, year] = match;
+            const date = new Date(Number(year), Number(month) - 1, Number(day));
+            if (!Number.isNaN(date.getTime())) {
+                return date;
+            }
+        }
+
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) {
+            return parsed;
+        }
     }
 
-    return "—";
+    return null;
+}
+
+function formatDate(value: any) {
+    const date = getPickupDate(value);
+    if (!date) return "—";
+
+    return date.toLocaleDateString("nb-NO", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+    });
 }
 
 function mapPickup(id: string, data: any): PickupRow {
@@ -81,6 +113,8 @@ function mapPickup(id: string, data: any): PickupRow {
             ? data.customerDisplayName
             : customerCompanyName;
 
+    const pickupDateValue = getPickupDate(data.pickupDate || data.createdAt);
+
     return {
         id,
         customerId: typeof data.customerId === "string" ? data.customerId : "",
@@ -88,7 +122,8 @@ function mapPickup(id: string, data: any): PickupRow {
         customerDisplayName,
         customerCompanyName,
         pickedUpBy: typeof data.pickedUpBy === "string" ? data.pickedUpBy : "",
-        pickupDateLabel: formatDate(data.pickupDate || data.createdAt),
+        pickupDateValue,
+        pickupDateLabel: pickupDateValue ? formatDate(pickupDateValue) : "—",
         lines: Array.isArray(data.lines) ? data.lines : [],
         lineCount: typeof data.lineCount === "number" ? data.lineCount : 0,
         unitCount: typeof data.unitCount === "number" ? data.unitCount : 0,
@@ -132,6 +167,7 @@ function groupPickupsByDate(pickups: PickupRow[]): PickupDateGroup[] {
         const existingDateGroup = groups.get(dateLabel);
         const group = existingDateGroup || {
             dateLabel,
+            dateValue: pickup.pickupDateValue,
             pickedUpByNames: [],
             lines: [],
             totalExVat: 0,
@@ -167,9 +203,11 @@ function groupPickupsByDate(pickups: PickupRow[]): PickupDateGroup[] {
         groups.set(dateLabel, group);
     }
 
-    return Array.from(groups.values()).sort((a, b) =>
-        a.dateLabel.localeCompare(b.dateLabel, "nb")
-    );
+    return Array.from(groups.values()).sort((a, b) => {
+        const timeA = a.dateValue?.getTime() ?? 0;
+        const timeB = b.dateValue?.getTime() ?? 0;
+        return timeA - timeB;
+    });
 }
 
 export default function AdminPickupsPage() {

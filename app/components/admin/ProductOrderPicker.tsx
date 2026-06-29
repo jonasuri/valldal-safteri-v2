@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export type ProductOrderLine = {
@@ -43,6 +43,7 @@ export type AdminProduct = {
 export type ProductOrderPickerMode = "create" | "edit" | "pickup";
 
 export type ProductOrderPickerProps = {
+    customerId?: string;
     customerType: string;
     mode: ProductOrderPickerMode;
     lines: ProductOrderLine[];
@@ -124,6 +125,40 @@ function getGroupStyles(label: string) {
     };
 }
 
+const VARIANT_ORDER = [
+    "80 ml",
+    "195 ml",
+    "390 ml",
+    "1 kg",
+    "2,5 kg",
+    "7,5 kg",
+    "80 g",
+    "250 ml",
+    "0,33 l",
+    "0,5 l",
+    "0,7 l",
+    "0,75 l",
+    "2,5 l",
+    "3 l",
+    "5 l",
+];
+
+function getVariantSortIndex(label: string) {
+    const index = VARIANT_ORDER.findIndex(
+        (value) => value.toLowerCase() === label.trim().toLowerCase()
+    );
+
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function sortVariants(variants: ProductVariant[]) {
+    return [...variants].sort((a, b) => {
+        const diff = getVariantSortIndex(a.label) - getVariantSortIndex(b.label);
+        if (diff !== 0) return diff;
+        return a.label.localeCompare(b.label, "nb");
+    });
+}
+
 function groupProductsByCategory(products: AdminProduct[]) {
     const groups: { label: string; products: AdminProduct[] }[] = [];
 
@@ -142,6 +177,7 @@ function groupProductsByCategory(products: AdminProduct[]) {
 }
 
 export default function ProductOrderPicker({
+    customerId,
     customerType,
     mode,
     lines,
@@ -155,6 +191,7 @@ export default function ProductOrderPicker({
     const [error, setError] = useState<string | null>(null);
     const [queryText, setQueryText] = useState("");
     const [brandFilter, setBrandFilter] = useState<BrandFilter>("alle");
+    const [preferredProductIds, setPreferredProductIds] = useState<string[]>([]);
 
     useEffect(() => {
         async function loadProducts() {
@@ -179,8 +216,47 @@ export default function ProductOrderPicker({
         void loadProducts();
     }, []);
 
+    useEffect(() => {
+        setQueryText("");
+        setPreferredProductIds([]);
+
+        // Load previously ordered products for the customer
+        if (!customerId) return;
+        async function loadPreferredProducts() {
+            try {
+                const q = query(collection(db, "pickups"), where("customerId", "==", customerId));
+                const snapshot = await getDocs(q);
+                const productIds = new Set<string>();
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (Array.isArray(data?.lines)) {
+                        data.lines.forEach((line: any) => {
+                            if (typeof line?.productId === "string") {
+                                productIds.add(line.productId);
+                            }
+                        });
+                    }
+                });
+                setPreferredProductIds(Array.from(productIds));
+            } catch (error) {
+                console.error("Failed to load preferred products", error);
+                setPreferredProductIds([]);
+            }
+        }
+        void loadPreferredProducts();
+    }, [customerId]);
+
     const filteredProducts = useMemo(() => {
         const q = queryText.trim().toLowerCase();
+
+        if (!q && !showProductsBeforeSearch && preferredProductIds.length > 0) {
+            const preferredIds = new Set(preferredProductIds);
+
+            return products.filter((product) => {
+                if (brandFilter !== "alle" && product.brand !== brandFilter) return false;
+                return preferredIds.has(product.id);
+            });
+        }
 
         return products.filter((product) => {
             if (!q && !showProductsBeforeSearch) return false;
@@ -201,7 +277,7 @@ export default function ProductOrderPicker({
 
             return searchableText.includes(q);
         });
-    }, [products, queryText, brandFilter, showProductsBeforeSearch]);
+    }, [products, queryText, brandFilter, showProductsBeforeSearch, preferredProductIds]);
 
     const groupedProducts = useMemo(
         () => groupProductsByCategory(filteredProducts),
@@ -347,7 +423,7 @@ export default function ProductOrderPicker({
                                             </div>
 
                                             <div className="mt-4 space-y-2">
-                                                {product.variants.map((variant) => (
+                                                {sortVariants(product.variants).map((variant) => (
                                                     <div
                                                         key={variant.id}
                                                         className="flex items-center justify-between gap-3 rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm"
@@ -404,7 +480,10 @@ export default function ProductOrderPicker({
                         ? "Ingen produkt passar søket."
                         : showProductsBeforeSearch
                             ? "Ingen produkt funne."
-                            : "Søk etter produkt for å legge til varer."}
+                            : customerId
+                                ? "Kunden har ingen tidlegare varer. Søk etter produkt for å legge til varer."
+                                : "Vel kunde for å sjå tidlegare varer eller søk etter produkt."
+                    }
                 </div>
             )}
         </section>
