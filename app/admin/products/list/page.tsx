@@ -32,6 +32,7 @@ const VARIANT_ORDER = [
     "0,7 l",
     "0,75 l",
     "2,5 l",
+    "3 l",
     "5 l",
 ];
 

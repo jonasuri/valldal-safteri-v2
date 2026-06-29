@@ -153,7 +153,7 @@ const CATEGORY_ITEM_SERIES: Record<string, number> = {
 const CATEGORY_VARIANT_OPTIONS: Record<string, string[]> = {
     Saft: ["0,33 l", "0,7 l", "2,5 l", "5 l"],
     Frisk: ["0,33 l"],
-    Rein: ["0,33 l", "0,75 l"],
+    Rein: ["0,33 l", "0,75 l", "3 l"],
     Sylte: ["80 ml", "195 ml", "390 ml", "1 kg", "2,5 kg", "7,5 kg"],
     Gelé: ["80 ml", "195 ml", "390 ml", "1 kg", "2,5 kg", "7,5 kg"],
     Saus: ["250 ml"],
