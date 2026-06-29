@@ -77,6 +77,10 @@ export default function NewPickupPage() {
     const [pickedUpBy, setPickedUpBy] = useState("");
     const [lines, setLines] = useState<ProductOrderLine[]>([]);
     const [saving, setSaving] = useState(false);
+    const [pickupDate, setPickupDate] = useState(() => {
+        const today = new Date();
+        return today.toISOString().slice(0, 10);
+    });
 
     useEffect(() => {
         async function loadCustomers() {
@@ -179,6 +183,10 @@ export default function NewPickupPage() {
             const customerSource = customer?.customerSource || "manual";
             const authUid = customer?.authUid || "";
 
+            const pickupDateValue = pickupDate
+                ? new Date(`${pickupDate}T12:00:00`)
+                : new Date();
+
             await addDoc(collection(db, "pickups"), {
                 customerId,
                 customerName: displayName,
@@ -188,7 +196,7 @@ export default function NewPickupPage() {
                 customerSource,
                 authUid,
                 pickedUpBy: pickedUpBy.trim(),
-                pickupDate: serverTimestamp(),
+                pickupDate: pickupDateValue,
                 lines,
                 lineCount: lines.length,
                 unitCount,
@@ -406,6 +414,16 @@ export default function NewPickupPage() {
                     <aside className="space-y-6">
                         <section className="rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
                             <h2 className="text-lg font-medium">Henting</h2>
+
+                            <label className="mt-4 block text-sm font-medium text-neutral-800">
+                                Dato
+                                <input
+                                    type="date"
+                                    value={pickupDate}
+                                    onChange={(event) => setPickupDate(event.target.value)}
+                                    className="mt-2 w-full rounded-[14px] border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-700"
+                                />
+                            </label>
 
                             <label className="mt-4 block text-sm font-medium text-neutral-800">
                                 Henta av <span className="font-normal text-neutral-400">(valfritt)</span>
