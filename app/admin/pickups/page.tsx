@@ -220,8 +220,6 @@ export default function AdminPickupsPage() {
         [filteredPickups]
     );
 
-    const totalExVat = filteredPickups.reduce((sum, pickup) => sum + pickup.totalExVat, 0);
-    const unitCount = filteredPickups.reduce((sum, pickup) => sum + pickup.unitCount, 0);
 
     function toggleCustomer(customerKey: string) {
         setOpenCustomers((current) => ({
@@ -358,7 +356,7 @@ export default function AdminPickupsPage() {
                 </div>
 
                 <section className="mt-6 rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
-                    <div className="grid gap-4 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
+                    <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
                         <label className="block">
                             <span className="sr-only">Søk</span>
                             <input
@@ -373,16 +371,6 @@ export default function AdminPickupsPage() {
                         <div className="rounded-[16px] border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm">
                             <div className="text-xs text-neutral-500">Kundar</div>
                             <div className="font-semibold">{customerGroups.length}</div>
-                        </div>
-
-                        <div className="rounded-[16px] border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm">
-                            <div className="text-xs text-neutral-500">Antal</div>
-                            <div className="font-semibold">{unitCount}</div>
-                        </div>
-
-                        <div className="rounded-[16px] border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm">
-                            <div className="text-xs text-neutral-500">Sum eks. mva.</div>
-                            <div className="font-semibold">{formatCurrency(totalExVat)}</div>
                         </div>
                     </div>
                 </section>
