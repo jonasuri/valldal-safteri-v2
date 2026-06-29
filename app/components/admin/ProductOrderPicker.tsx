@@ -21,10 +21,11 @@ export type ProductOrderLine = {
 export type ProductVariant = {
     id: string;
     label: string;
-    priceRetail?: number | null;
-    priceGrossist?: number | null;
-    unitPrice?: number | null;
-    price?: number | null;
+    prices?: {
+        retail?: number | null;
+        trade?: number | null;
+        distributor?: number | null;
+    };
 };
 
 export type AdminProduct = {
@@ -411,11 +412,15 @@ export default function ProductOrderPicker({
 }
 
 function getVariantPrice(variant: ProductVariant, customerType: string) {
+    const storePrice = variant.prices?.retail ?? 0;
+    const retailPrice = variant.prices?.trade ?? storePrice;
+    const wholesalePrice = variant.prices?.distributor ?? retailPrice;
+
     if (customerType === "grossist") {
-        return variant.priceGrossist ?? variant.unitPrice ?? variant.price ?? 0;
+        return wholesalePrice;
     }
 
-    return variant.priceRetail ?? variant.unitPrice ?? variant.price ?? 0;
+    return retailPrice;
 }
 
 function mapProduct(id: string, data: any): AdminProduct {
@@ -437,13 +442,14 @@ function mapProduct(id: string, data: any): AdminProduct {
                         : typeof variant.name === "string"
                             ? variant.name
                             : "Variant",
-                priceRetail:
-                    typeof variant.priceRetail === "number" ? variant.priceRetail : null,
-                priceGrossist:
-                    typeof variant.priceGrossist === "number" ? variant.priceGrossist : null,
-                unitPrice:
-                    typeof variant.unitPrice === "number" ? variant.unitPrice : null,
-                price: typeof variant.price === "number" ? variant.price : null,
+                prices: {
+                    retail:
+                        typeof variant?.prices?.retail === "number" ? variant.prices.retail : null,
+                    trade:
+                        typeof variant?.prices?.trade === "number" ? variant.prices.trade : null,
+                    distributor:
+                        typeof variant?.prices?.distributor === "number" ? variant.prices.distributor : null,
+                },
             }))
             : [],
     };
