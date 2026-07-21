@@ -46,7 +46,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ ok: true, ignored: true });
         }
 
-        const signingKey = process.env.ZETTLE_WEBHOOK_SIGNING_KEY;
+        const signingKey = process.env.ZETTLE_WEBHOOK_SIGNING_KEY
+            ?.trim()
+            .replace(/^["']|["']$/g, "");
         const signature = request.headers.get("x-izettle-signature") ?? "";
         const timestamp = typeof event.timestamp === "string" ? event.timestamp : "";
         if (!signingKey || !signature || !timestamp || !validSignature({
