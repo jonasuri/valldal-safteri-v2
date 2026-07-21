@@ -1,5 +1,6 @@
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { postPackedOrderInventory } from "@/lib/inventory/orderFulfillment";
 
 export type OrderStatus =
     | "new"
@@ -151,6 +152,16 @@ export async function submitOrderApprovalResponse(
     respondedBy: ApprovalRespondedBy = "customer"
 ) {
     const nextStatus: OrderStatus = response === "wait_for_complete" ? "processing" : "packed";
+    const orderRef = doc(db, "orders", orderId);
+    const inventoryFulfillment = response === "wait_for_complete"
+        ? null
+        : await (async () => {
+            const snapshot = await getDoc(orderRef);
+            if (!snapshot.exists()) throw new Error("Fann ikkje ordren.");
+            const data = snapshot.data();
+            const lines = Array.isArray(data.packing?.lines) ? data.packing.lines : [];
+            return postPackedOrderInventory(orderId, lines);
+        })();
 
     const backorderStatus: BackorderStatus =
         response === "deliver_partial_later"
@@ -159,7 +170,7 @@ export async function submitOrderApprovalResponse(
                 ? "cancelled"
                 : "waiting_for_stock";
 
-    await updateDoc(doc(db, "orders", orderId), {
+    await updateDoc(orderRef, {
         status: nextStatus,
         "approval.status": "answered" as ApprovalStatus,
         "approval.response": response,
@@ -167,6 +178,7 @@ export async function submitOrderApprovalResponse(
         "approval.respondedAt": serverTimestamp(),
         "backorder.status": backorderStatus,
         "backorder.createdFromApproval": response,
+        ...(inventoryFulfillment ? { inventoryFulfillment } : {}),
         updatedAt: serverTimestamp(),
     });
 }

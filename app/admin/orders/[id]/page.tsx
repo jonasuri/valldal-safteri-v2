@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { postPackedOrderInventory } from "@/lib/inventory/orderFulfillment";
 import { updateOrderLines, type OrderStatus } from "@/lib/ordersFirestore";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 import ProductOrderPicker from "../../../components/admin/ProductOrderPicker";
@@ -429,6 +430,13 @@ export default function AdminOrderDetailPage() {
 
 
     async function updateOrderStatus(nextStatus: OrderStatus) {
+        if (nextStatus === "packed") {
+            window.alert(
+                "Fullfør pakking frå plukklista. Då blir varene trekte korrekt frå lageret."
+            );
+            return;
+        }
+
         if (!orderId) return;
 
         if (nextStatus === "cancelled") {
@@ -561,11 +569,16 @@ export default function AdminOrderDetailPage() {
         try {
             setSavingStatus(true);
 
+            const inventoryFulfillment = response === "wait_for_complete"
+                ? null
+                : await postPackedOrderInventory(orderId, order?.packingLines ?? []);
+
             if (response === "deliver_partial_cancel_rest") {
                 await updateDoc(doc(db, "orders", orderId), {
                     status: "packed",
                     ...approvalUpdates,
                     "backorder.status": "cancelled",
+                    inventoryFulfillment,
                     updatedAt: serverTimestamp(),
                 });
                 return;
@@ -585,11 +598,16 @@ export default function AdminOrderDetailPage() {
                 status: "packed",
                 ...approvalUpdates,
                 "backorder.status": "open",
+                inventoryFulfillment,
                 updatedAt: serverTimestamp(),
             });
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje oppdatere kundesvar.");
+            window.alert(
+                error instanceof Error
+                    ? error.message
+                    : "Kunne ikkje oppdatere kundesvar."
+            );
         } finally {
             setSavingStatus(false);
         }

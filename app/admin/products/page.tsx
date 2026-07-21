@@ -73,12 +73,27 @@ export default function AdminProductsPage() {
         return null;
     }
 
+    function getVariantItemNumber(variant: any) {
+        return String(variant?.itemNumber ?? variant?.sku ?? "").trim();
+    }
+
+    function normalizeVariantForSave(variant: any) {
+        const itemNumber = getVariantItemNumber(variant);
+        return {
+            ...variant,
+            itemNumber,
+            sku: itemNumber,
+        };
+    }
+
     async function persistVariants(productId: string, nextVariants: any[]) {
         try {
-            // Keep local cache in sync (source of truth for variants on this page)
-            setVariantsByProductId((prev) => ({ ...prev, [productId]: nextVariants }));
+            const normalizedVariants = nextVariants.map(normalizeVariantForSave);
 
-            await updateDoc(doc(db, "products", productId), { variants: nextVariants });
+            // Keep local cache in sync (source of truth for variants on this page)
+            setVariantsByProductId((prev) => ({ ...prev, [productId]: normalizedVariants }));
+
+            await updateDoc(doc(db, "products", productId), { variants: normalizedVariants });
             setToast("Variantane vart oppdatert");
             setTimeout(() => setToast(null), 2000);
         } catch (err) {
@@ -112,8 +127,8 @@ export default function AdminProductsPage() {
 
         const nextVariants = cached.map((variant: any, idx: number) => {
             const vId = String(variant?.id ?? variant?.variantId ?? idx);
-            if (vId === variantId) return { ...variant, ...patch };
-            return variant;
+            if (vId === variantId) return normalizeVariantForSave({ ...variant, ...patch });
+            return normalizeVariantForSave(variant);
         });
 
         // Update cache immediately
@@ -686,14 +701,20 @@ export default function AdminProductsPage() {
                                                                     variant.label ??
                                                                     variant.name ??
                                                                     "Ukjend";
+                                                                const itemNumber = getVariantItemNumber(variant);
 
                                                                 return (
                                                                     <li
                                                                         key={key}
                                                                         className="flex items-center justify-between gap-4 rounded border border-[color:var(--line)] bg-white px-3 py-2 text-[11px] text-neutral-700"
                                                                     >
-                                                                        <div className="flex-1 font-medium">
-                                                                            {sizeLabel}
+                                                                        <div className="flex-1">
+                                                                            <div className="font-medium">{sizeLabel}</div>
+                                                                            {itemNumber && (
+                                                                                <div className="mt-0.5 text-[10px] text-neutral-500">
+                                                                                    Varenr. {itemNumber}
+                                                                                </div>
+                                                                            )}
                                                                         </div>
 
                                                                         <div className="flex flex-col items-end gap-1">

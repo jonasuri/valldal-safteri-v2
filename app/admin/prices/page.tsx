@@ -13,6 +13,7 @@ type PriceGroup = "retail" | "trade" | "distributor";
 type ProductVariant = {
     id: string;
     label: string;
+    itemNumber?: string;
     sku?: string;
     price?: number;
     prices?: {
@@ -44,7 +45,7 @@ type PriceRow = {
     category: string;
     variantId: string;
     variantLabel: string;
-    sku: string;
+    itemNumber: string;
     active: boolean;
     variant: ProductVariant;
     original: Record<PriceGroup, number | "">;
@@ -145,7 +146,7 @@ export default function AdminPricesPage() {
                             category: data.category || "Utan kategori",
                             variantId: variant.id,
                             variantLabel: variant.label || "Variant",
-                            sku: variant.sku || "",
+                            itemNumber: variant.itemNumber || variant.sku || "",
                             active: typeof variant.active === "boolean" ? variant.active : true,
                             variant,
                             original: { retail, trade, distributor },
@@ -316,7 +317,8 @@ export default function AdminPricesPage() {
                         ...item.variant,
                         id: item.variantId,
                         label: item.variantLabel,
-                        sku: item.sku,
+                        itemNumber: item.itemNumber,
+                        sku: item.itemNumber,
                         price: retail ?? 0,
                         prices,
                         priceUpdatedAt,
@@ -506,7 +508,7 @@ export default function AdminPricesPage() {
                     <div className="grid grid-cols-[1.5fr_0.9fr_0.9fr_0.7fr_0.7fr_0.7fr] gap-3 border-b border-[color:var(--line)] bg-neutral-50 px-4 py-3 text-xs font-medium uppercase tracking-[0.12em] text-neutral-500">
                         <div>Produkt</div>
                         <div>Variant</div>
-                        <div>SKU</div>
+                        <div>Varenr.</div>
                         <div className="text-right">Utsal</div>
                         <div className="text-right">Retail</div>
                         <div className="text-right">Grossist</div>
@@ -530,7 +532,7 @@ export default function AdminPricesPage() {
                                         </div>
                                     </div>
                                     <div className="text-neutral-700">{row.variantLabel}</div>
-                                    <div className="text-xs text-neutral-500">{row.sku}</div>
+                                    <div className="text-xs text-neutral-500">{row.itemNumber}</div>
 
                                     {PRICE_GROUPS.map((group) => (
                                         <div key={group.key} className="space-y-1">

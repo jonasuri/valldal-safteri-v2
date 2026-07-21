@@ -7,6 +7,7 @@ export type B2BProductBrand = "safteri" | "bryggeri";
 export type B2BVariant = {
     id: string;
     label: string;
+    itemNumber: string;
     sku: string;
     active: boolean;
     imageUrl?: string;
@@ -32,6 +33,7 @@ function asString(value: unknown) {
     return typeof value === "string" ? value.trim() : "";
 }
 
+
 function asNumber(value: unknown) {
     if (typeof value === "number" && Number.isFinite(value)) {
         return value;
@@ -46,6 +48,10 @@ function asNumber(value: unknown) {
     return undefined;
 }
 
+function getVariantItemNumber(raw: any) {
+    return asString(raw?.itemNumber ?? raw?.sku);
+}
+
 function normalizeBrand(value: unknown): B2BProductBrand {
     return value === "bryggeri" ? "bryggeri" : "safteri";
 }
@@ -55,14 +61,15 @@ function mapVariant(raw: any): B2BVariant | null {
 
     const id = asString(raw.id);
     const label = asString(raw.label);
-    const sku = asString(raw.sku);
+    const itemNumber = getVariantItemNumber(raw);
 
     if (!id || !label) return null;
 
     return {
         id,
         label,
-        sku,
+        itemNumber,
+        sku: itemNumber,
         active: typeof raw.active === "boolean" ? raw.active : true,
         imageUrl: asString(raw.imageUrl) || undefined,
         alcoholPercent: asNumber(raw.alcoholPercent),
@@ -95,12 +102,17 @@ function mapProduct(id: string, data: any): B2BProduct | null {
     };
 }
 
+
 export async function fetchB2BProducts(): Promise<B2BProduct[]> {
     const snapshot = await getDocs(query(collection(db, "products"), orderBy("name", "asc")));
 
     return snapshot.docs
         .map((docSnap) => mapProduct(docSnap.id, docSnap.data()))
         .filter(Boolean) as B2BProduct[];
+}
+
+export function getB2BVariantSku(variant: Pick<B2BVariant, "itemNumber" | "sku">) {
+    return variant.itemNumber || variant.sku;
 }
 
 export function getB2BVariantPrice(variant: B2BVariant, customerType: CustomerType) {

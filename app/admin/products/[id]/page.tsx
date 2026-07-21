@@ -27,6 +27,7 @@ type ProductDoc = {
         id: string;
         label: string;
         itemNumber?: string;
+        sku?: string;
         barcode?: string;
         price: number;
         prices?: {
@@ -577,7 +578,9 @@ export default function AdminProductEditPage({
                             itemNumber:
                                 typeof (v as any).itemNumber === "string" || typeof (v as any).itemNumber === "number"
                                     ? String((v as any).itemNumber)
-                                    : "",
+                                    : typeof (v as any).sku === "string" || typeof (v as any).sku === "number"
+                                        ? String((v as any).sku)
+                                        : "",
                             barcode: typeof (v as any).barcode === "string" ? (v as any).barcode : "",
                             price: String(v.prices?.retail ?? v.price),
                             priceTrade: typeof v.prices?.trade === "number" ? String(v.prices.trade) : "",
@@ -1061,6 +1064,7 @@ export default function AdminProductEditPage({
                     id: string;
                     label: string;
                     itemNumber: string;
+                    sku?: string;
                     barcode?: string;
                     price: number;
                     prices: {
@@ -1075,6 +1079,7 @@ export default function AdminProductEditPage({
                     id: v.id,
                     label: v.label.trim(),
                     itemNumber: v.itemNumber.trim(),
+                    sku: v.itemNumber.trim(),
                     price: retailPrice,
                     prices: {
                         retail: retailPrice,

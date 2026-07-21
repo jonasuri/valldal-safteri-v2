@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { postPackedOrderInventory } from "@/lib/inventory/orderFulfillment";
 import { groupOrderLinesByBrand, sortOrderLines } from "@/lib/orderLineSorting";
 
 type OrderLine = {
@@ -164,19 +165,28 @@ export default function OrderPickPage() {
             setSavingPacking(true);
 
             const nextStatus = hasMissingProducts ? "partial" : "packed";
+            const packingLines = buildPackingLines();
+            const inventoryFulfillment = hasMissingProducts
+                ? null
+                : await postPackedOrderInventory(orderId, packingLines);
 
             await updateDoc(doc(db, "orders", orderId), {
                 status: nextStatus,
-                "packing.lines": buildPackingLines(),
+                "packing.lines": packingLines,
                 "packing.status": hasMissingProducts ? "partial" : "complete",
                 "packing.completedAt": serverTimestamp(),
+                ...(inventoryFulfillment ? { inventoryFulfillment } : {}),
                 updatedAt: serverTimestamp(),
             });
 
             router.push(`/admin/orders/${orderId}`);
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje fullføre pakkinga.");
+            window.alert(
+                error instanceof Error
+                    ? error.message
+                    : "Kunne ikkje fullføre pakkinga."
+            );
         } finally {
             setSavingPacking(false);
         }

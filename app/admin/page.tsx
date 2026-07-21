@@ -999,6 +999,20 @@ export default function AdminPage() {
                             </Link>
 
                             <Link
+                                href="/admin/inventory"
+                                className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] px-4 py-1.5 text-xs text-neutral-700 hover:bg-black/5"
+                            >
+                                Lager
+                            </Link>
+
+                            <Link
+                                href="/admin/integrations/zettle"
+                                className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] px-4 py-1.5 text-xs text-neutral-700 hover:bg-black/5"
+                            >
+                                Zettle-synk
+                            </Link>
+
+                            <Link
                                 href="/admin/media"
                                 className="inline-flex items-center justify-center rounded-full border border-[color:var(--line)] px-4 py-1.5 text-xs text-neutral-700 hover:bg-black/5"
                             >
