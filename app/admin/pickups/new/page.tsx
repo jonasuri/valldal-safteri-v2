@@ -3,10 +3,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, getDocs, orderBy, query, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchInventoryBalances, recordInventoryMovements } from "@/lib/inventory/firestore";
 import type { CustomerType } from "@/lib/customersFirestore";
 import ProductOrderPicker, { type ProductOrderLine } from "../../../components/admin/ProductOrderPicker";
 
@@ -59,6 +60,7 @@ function mapCustomer(id: string, data: any): PickupCustomer {
 
 export default function NewPickupPage() {
     const router = useRouter();
+    const pickupIdRef = useRef<string | null>(null);
 
     const [customers, setCustomers] = useState<PickupCustomer[]>([]);
     const [loadingCustomers, setLoadingCustomers] = useState(true);
@@ -187,7 +189,39 @@ export default function NewPickupPage() {
                 ? new Date(`${pickupDate}T12:00:00`)
                 : new Date();
 
-            await addDoc(collection(db, "pickups"), {
+            const pickupRef = pickupIdRef.current
+                ? doc(db, "pickups", pickupIdRef.current)
+                : doc(collection(db, "pickups"));
+            pickupIdRef.current = pickupRef.id;
+            const inventoryBalances = await fetchInventoryBalances();
+            const initializedSkus = new Set(
+                inventoryBalances.map((balance) => balance.sku)
+            );
+            const skippedSkus = [...new Set(
+                lines
+                    .filter((line) => !line.sku || !initializedSkus.has(line.sku))
+                    .map((line) => line.sku || `${line.productName} · ${line.variantLabel}`)
+            )];
+            const inventoryResult = await recordInventoryMovements(
+                lines
+                    .filter((line) => line.sku && initializedSkus.has(line.sku))
+                    .map((line) => ({
+                        sku: line.sku!,
+                        quantity: -line.quantity,
+                        type: "pickup" as const,
+                        source: "pickup" as const,
+                        idempotencyKey: `pickup:${pickupRef.id}:${line.productId}:${line.variantId}`,
+                        productId: line.productId,
+                        variantId: line.variantId,
+                        productName: line.productName,
+                        variantName: line.variantLabel,
+                        sourceId: pickupRef.id,
+                        note: "Trekt frå lager ved registrert henting.",
+                        metadata: { pickupId: pickupRef.id, customerId },
+                    }))
+            );
+
+            await setDoc(pickupRef, {
                 customerId,
                 customerName: displayName,
                 customerDisplayName: displayName,
@@ -203,14 +237,30 @@ export default function NewPickupPage() {
                 totalExVat,
                 invoiceStatus: "not_invoiced",
                 source: "ipad",
+                inventoryFulfillment: {
+                    status: skippedSkus.length === 0
+                        ? "posted"
+                        : inventoryResult.recorded.length + inventoryResult.skipped.length > 0
+                            ? "partial"
+                            : "not_tracked",
+                    movementIds: [
+                        ...inventoryResult.recorded.map((item) => item.movementId),
+                        ...inventoryResult.skipped.flatMap((item) => item.movementId ? [item.movementId] : []),
+                    ],
+                    skippedSkus,
+                    postedAt: serverTimestamp(),
+                },
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             });
 
+            pickupIdRef.current = null;
             router.push("/admin/pickups");
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje lagre henting.");
+            window.alert(
+                error instanceof Error ? error.message : "Kunne ikkje lagre henting."
+            );
         } finally {
             setSaving(false);
         }
@@ -419,6 +469,7 @@ export default function NewPickupPage() {
                         title="Varer"
                         description="Søk opp varer som kunden tek med seg no."
                         showProductsBeforeSearch={false}
+                        scannerEnabled={Boolean(selectedCustomer || manualCustomerName.trim())}
                     />
 
                     <aside className="space-y-6">

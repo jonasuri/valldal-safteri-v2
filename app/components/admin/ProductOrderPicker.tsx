@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -16,6 +16,8 @@ export type ProductOrderLine = {
     subcategoryName?: string | null;
     quantity: number;
     unitPrice: number;
+    sku?: string;
+    barcode?: string;
 };
 
 export type ProductVariant = {
@@ -26,6 +28,9 @@ export type ProductVariant = {
         trade?: number | null;
         distributor?: number | null;
     };
+    sku: string;
+    barcode: string;
+    active: boolean;
 };
 
 export type AdminProduct = {
@@ -51,6 +56,7 @@ export type ProductOrderPickerProps = {
     title?: string;
     description?: string;
     showProductsBeforeSearch?: boolean;
+    scannerEnabled?: boolean;
 };
 
 type BrandFilter = "alle" | "safteri" | "bryggeri";
@@ -185,6 +191,7 @@ export default function ProductOrderPicker({
     title = "Produkt",
     description,
     showProductsBeforeSearch = true,
+    scannerEnabled = true,
 }: ProductOrderPickerProps) {
     const [products, setProducts] = useState<AdminProduct[]>([]);
     const [loadingProducts, setLoadingProducts] = useState(true);
@@ -192,6 +199,10 @@ export default function ProductOrderPicker({
     const [queryText, setQueryText] = useState("");
     const [brandFilter, setBrandFilter] = useState<BrandFilter>("alle");
     const [preferredProductIds, setPreferredProductIds] = useState<string[]>([]);
+    const [scannerActive, setScannerActive] = useState(false);
+    const [scanValue, setScanValue] = useState("");
+    const [scanMessage, setScanMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+    const scanInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         async function loadProducts() {
@@ -317,6 +328,8 @@ export default function ProductOrderPicker({
                 subcategoryName: product.subcategoryName,
                 quantity,
                 unitPrice,
+                sku: variant.sku,
+                barcode: variant.barcode,
             });
         }
 
@@ -330,6 +343,37 @@ export default function ProductOrderPicker({
     ) {
         const currentQuantity = getLineQuantity(product.id, variant.id);
         setLineQuantity(product, variant, currentQuantity + delta);
+    }
+
+    function scanBarcode(rawValue: string) {
+        const barcode = rawValue.trim();
+        setScanValue("");
+        if (!barcode) return;
+
+        const matches = products.flatMap((product) =>
+            product.variants
+                .filter((variant) => variant.active && variant.barcode === barcode)
+                .map((variant) => ({ product, variant }))
+        );
+
+        if (matches.length === 0) {
+            setScanMessage({ type: "error", text: `Fann ingen aktiv vare med strekkode ${barcode}.` });
+        } else if (matches.length > 1) {
+            setScanMessage({ type: "error", text: `Strekkoden ${barcode} finst på fleire variantar.` });
+        } else {
+            const { product, variant } = matches[0];
+            if (getVariantPrice(variant, customerType) <= 0) {
+                setScanMessage({ type: "error", text: `${product.name} · ${variant.label} manglar pris for denne kunden.` });
+            } else {
+                adjustLineQuantity(product, variant, 1);
+                setScanMessage({
+                    type: "success",
+                    text: `${product.name} · ${variant.label} lagt til. Antal: ${getLineQuantity(product.id, variant.id) + 1}.`,
+                });
+            }
+        }
+
+        window.setTimeout(() => scanInputRef.current?.focus(), 0);
     }
 
     return (
@@ -369,6 +413,68 @@ export default function ProductOrderPicker({
                     className="w-full rounded-full border border-neutral-200 bg-white px-4 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-500"
                 />
             </label>
+
+            {mode === "pickup" && (
+                <div className="mt-4 rounded-[16px] border border-neutral-200 bg-neutral-50 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-neutral-900">Strekkodeskannar</p>
+                            <p className="mt-1 text-xs text-neutral-500">
+                                Kvar skanning legg til éi eining. Vel kunde eller prisgruppe først.
+                            </p>
+                        </div>
+                        {!scannerActive ? (
+                            <button
+                                type="button"
+                                disabled={!scannerEnabled}
+                                onClick={() => {
+                                    setScannerActive(true);
+                                    setScanMessage(null);
+                                    window.setTimeout(() => scanInputRef.current?.focus(), 0);
+                                }}
+                                className="rounded-full bg-neutral-900 px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
+                            >
+                                Start skanning
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setScannerActive(false);
+                                    setScanValue("");
+                                }}
+                                className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs font-medium"
+                            >
+                                Stopp skanning
+                            </button>
+                        )}
+                    </div>
+
+                    {scannerActive && (
+                        <input
+                            ref={scanInputRef}
+                            value={scanValue}
+                            onChange={(event) => setScanValue(event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === "Tab") {
+                                    event.preventDefault();
+                                    scanBarcode(scanValue);
+                                }
+                            }}
+                            inputMode="none"
+                            autoComplete="off"
+                            placeholder="Skann strekkode …"
+                            className="mt-3 w-full rounded-[12px] border-2 border-blue-500 bg-white px-4 py-3 text-base font-medium outline-none"
+                        />
+                    )}
+
+                    {scanMessage && (
+                        <p className={`mt-3 rounded-[10px] px-3 py-2 text-sm ${scanMessage.type === "success" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
+                            {scanMessage.text}
+                        </p>
+                    )}
+                </div>
+            )}
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
                 <span>{mode === "pickup" ? "Henting" : mode === "edit" ? "Redigering" : "Ny ordre"}</span>
@@ -423,7 +529,7 @@ export default function ProductOrderPicker({
                                             </div>
 
                                             <div className="mt-4 space-y-2">
-                                                {sortVariants(product.variants).map((variant) => (
+                                                {sortVariants(product.variants.filter((variant) => variant.active)).map((variant) => (
                                                     <div
                                                         key={variant.id}
                                                         className="flex items-center justify-between gap-3 rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm"
@@ -529,6 +635,13 @@ function mapProduct(id: string, data: any): AdminProduct {
                     distributor:
                         typeof variant?.prices?.distributor === "number" ? variant.prices.distributor : null,
                 },
+                sku: typeof variant.itemNumber === "string"
+                    ? variant.itemNumber.trim()
+                    : typeof variant.sku === "string"
+                        ? variant.sku.trim()
+                        : "",
+                barcode: typeof variant.barcode === "string" ? variant.barcode.trim() : "",
+                active: variant.active !== false,
             }))
             : [],
     };

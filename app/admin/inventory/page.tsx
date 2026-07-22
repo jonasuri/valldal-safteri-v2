@@ -83,6 +83,7 @@ const movementLabels: Record<InventoryMovement["type"], string> = {
     manual_adjustment: "Manuell korrigering",
     stocktake_adjustment: "Vareteljing",
     order_fulfillment: "Ordre pakka",
+    pickup: "Henting",
     zettle_sale: "Zettle-sal",
     production: "Produksjon",
     return: "Retur",
