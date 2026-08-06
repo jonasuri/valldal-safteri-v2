@@ -8,8 +8,8 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { addDoc, collection, doc, getDocs, limit, onSnapshot, query, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
-import { submitOrderApprovalResponse } from "@/lib/ordersFirestore";
 import { notifyInternalOrder } from "@/lib/internalOrderNotifications";
+import { submitCustomerOrderApproval } from "@/lib/customerOrderApproval";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 
 type AccountCustomer = {
@@ -366,10 +366,12 @@ export default function AccountOrderDetailPage() {
 
         try {
             setSavingApproval(true);
-            await submitOrderApprovalResponse(order.id, selectedApprovalResponse);
-            if (auth.currentUser) {
-                await notifyInternalOrder({ user: auth.currentUser, orderId: order.id, event: "approval_response" });
-            }
+            if (!auth.currentUser) throw new Error("UNAUTHORIZED");
+            await submitCustomerOrderApproval({
+                user: auth.currentUser,
+                orderId: order.id,
+                response: selectedApprovalResponse,
+            });
         } catch (error) {
             console.error(error);
             window.alert("Kunne ikkje lagre svaret.");
