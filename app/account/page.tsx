@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
@@ -260,11 +260,16 @@ export default function AccountPage() {
 
         try {
             setSendingPasswordLink(true);
-            await sendPasswordResetEmail(auth, nextEmail);
+            const response = await fetch("/api/account/password-link", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: nextEmail }),
+            });
+            if (!response.ok) throw new Error("PASSWORD_LINK_FAILED");
             setPasswordLinkSent(true);
         } catch (err) {
             console.error(err);
-            setError("Kunne ikkje sende passordlenke. Kontroller e-postadressa eller ta kontakt med Valldal Safteri.");
+            setError("Kunne ikkje sende passordlenke akkurat no. Prøv igjen seinare eller ta kontakt med Valldal Safteri.");
         } finally {
             setSendingPasswordLink(false);
         }
@@ -512,7 +517,7 @@ export default function AccountPage() {
 
                         <div className="mt-6 rounded-[18px] border border-neutral-200 bg-neutral-50 p-4">
                             <h3 className="text-sm font-medium text-neutral-900">
-                                Ny kunde eller gløymt passord?
+                                Første gong eller gløymt passord?
                             </h3>
                             <p className="mt-2 text-sm leading-6 text-neutral-600">
                                 Skriv inn e-postadressa di over, så sender vi ei lenke der du kan opprette eller endre passord.

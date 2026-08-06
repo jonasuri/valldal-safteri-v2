@@ -20,7 +20,6 @@ type CustomerForm = {
     phone: string;
     organizationNumber: string;
     openingHours: string;
-    authUid: string;
     customerType: CustomerType;
     active: boolean;
     profileCompleted: boolean;
@@ -35,7 +34,6 @@ const emptyForm: CustomerForm = {
     phone: "",
     organizationNumber: "",
     openingHours: "",
-    authUid: "",
     customerType: "retail",
     active: true,
     profileCompleted: false,
@@ -129,7 +127,6 @@ export default function AdminCustomersPage() {
         const phone = form.phone.trim();
         const organizationNumber = form.organizationNumber.trim();
         const openingHours = form.openingHours.trim();
-        const authUid = form.authUid.trim();
 
         if (!email) {
             setError("E-post er påkravd.");
@@ -153,7 +150,6 @@ export default function AdminCustomersPage() {
                 phone,
                 organizationNumber,
                 openingHours,
-                authUid,
                 customerType: form.customerType,
                 active: form.active,
                 profileCompleted: Boolean(companyName && contactName && phone && organizationNumber),
@@ -318,7 +314,7 @@ export default function AdminCustomersPage() {
                         <div>
                             <h2 className="text-lg font-medium">Ny kunde</h2>
                             <p className="mt-1 text-sm text-neutral-500">
-                                Opprett kunde med e-post og prisgruppe. Utan Firebase UID blir kunden lagra som manuell kunde utan innlogging.
+                                Opprett kunden med e-post og prisgruppe. Kundekonto kan aktiverast frå kundekortet etterpå.
                             </p>
                         </div>
 
@@ -403,17 +399,6 @@ export default function AdminCustomersPage() {
                                 />
                             </label>
 
-                            <label className="space-y-1 text-sm font-medium text-neutral-800">
-                                Firebase Auth UID (valfritt)
-                                <input
-                                    type="text"
-                                    value={form.authUid}
-                                    onChange={(e) => updateForm("authUid", e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="Lim inn UID frå Firebase Auth"
-                                />
-                            </label>
-
                             <label className="space-y-1 text-sm font-medium text-neutral-800 md:col-span-2">
                                 Opningstider / leveringsinfo
                                 <textarea
@@ -450,9 +435,7 @@ export default function AdminCustomersPage() {
                             <div className="rounded-[12px] border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
                                 <div className="font-medium text-neutral-800">Kundestatus</div>
                                 <div className="mt-1 text-xs text-neutral-500">
-                                    {form.authUid.trim()
-                                        ? "Kunden blir oppretta som registrert kunde med kundekonto."
-                                        : "Kunden blir oppretta som manuell kunde utan kundekonto."}
+                                    Kunden blir oppretta utan innlogging. Du kan aktivere kundekontoen og sende passordlenke frå kundekortet.
                                 </div>
                             </div>
                         </div>

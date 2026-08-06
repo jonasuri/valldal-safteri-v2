@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -234,11 +233,25 @@ export default function AdminCustomerDetailPage() {
 
         try {
             setSendingPasswordLink(true);
-            await sendPasswordResetEmail(auth, email);
-            setSuccess("Passordlenke sendt til kunden dersom e-posten finst i Firebase Authentication.");
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) throw new Error("UNAUTHORIZED");
+            const response = await fetch("/api/account/password-link", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ customerId }),
+            });
+            if (!response.ok) throw new Error("PASSWORD_LINK_FAILED");
+
+            const customer = await fetchCustomerById(customerId);
+            if (customer) {
+                const nextForm = customerToForm(customer);
+                setForm(nextForm);
+                setInitial(nextForm);
+            }
+            setSuccess("Passordlenke er sendt til kunden.");
         } catch (err) {
             console.error(err);
-            setError("Kunne ikkje sende passordlenke. Kontroller at brukaren finst i Firebase Authentication.");
+            setError("Kunne ikkje opprette kundekonto eller sende passordlenke.");
         } finally {
             setSendingPasswordLink(false);
         }
@@ -333,8 +346,14 @@ export default function AdminCustomerDetailPage() {
                                     type="email"
                                     value={form.email}
                                     onChange={(e) => updateForm("email", e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
+                                    disabled={Boolean(form.authUid)}
+                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-500"
                                 />
+                                {form.authUid ? (
+                                    <span className="block text-xs font-normal text-neutral-500">
+                                        E-postadressa er knytt til innlogginga. Kontaktinformasjon og innlogging må endrast samla.
+                                    </span>
+                                ) : null}
                             </label>
 
                             <label className="space-y-1 text-sm font-medium text-neutral-800">
@@ -368,25 +387,12 @@ export default function AdminCustomerDetailPage() {
                                 />
                             </label>
 
-                            <label className="space-y-1 text-sm font-medium text-neutral-800 md:col-span-2">
-                                Firebase Auth UID
-                                <input
-                                    type="text"
-                                    value={form.authUid}
-                                    onChange={(e) => updateForm("authUid", e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="Lim inn UID frå Firebase Authentication"
-                                />
-                                <span className="block text-xs font-normal text-neutral-500">
-                                    Brukast for å knyte kunden til innlogging på /account. Dette gir ikkje admin-tilgang.
-                                </span>
-                            </label>
                             <div className="rounded-[12px] border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700 md:col-span-2">
-                                <div className="font-medium text-neutral-800">Kundekopling</div>
+                                <div className="font-medium text-neutral-800">Kundekonto</div>
                                 <div className="mt-1 text-xs text-neutral-500">
                                     {form.authUid.trim()
-                                        ? "Denne kunden er kopla til Firebase UID og kan få tilgang til historikk via kundekonto."
-                                        : "Denne kunden er manuell. Legg inn Firebase UID for å knyte kunden til innlogging seinare."}
+                                        ? "Kundekontoen er aktiv. Du kan sende ei ny lenke dersom kunden har gløymt passordet."
+                                        : "Kundekontoen er ikkje aktivert. Kontoen blir oppretta automatisk når du sender tilgang."}
                                 </div>
                             </div>
 
@@ -447,11 +453,11 @@ export default function AdminCustomerDetailPage() {
                                 disabled={sendingPasswordLink || !form.email.trim()}
                                 className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                {sendingPasswordLink ? "Sender passordlenke …" : "Send passordlenke"}
+                                {sendingPasswordLink ? "Sender passordlenke …" : form.authUid ? "Send ny passordlenke" : "Opprett konto og send tilgang"}
                             </button>
                         </div>
                         <p className="mt-3 text-xs leading-5 text-neutral-500">
-                            Passordlenka verkar berre dersom kunden allereie finst i Firebase Authentication. UID-feltet over knyter denne kundeposten til innlogging og historikk.
+                            Konto og intern kopling blir handtert automatisk. Kunden får e-post frå Valldal Safteri med lenke til den eigne passordsida.
                         </p>
                     </section>
                 )}
