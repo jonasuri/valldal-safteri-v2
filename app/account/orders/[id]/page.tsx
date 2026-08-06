@@ -9,6 +9,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { addDoc, collection, doc, getDocs, limit, onSnapshot, query, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { submitOrderApprovalResponse } from "@/lib/ordersFirestore";
+import { notifyInternalOrder } from "@/lib/internalOrderNotifications";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 
 type AccountCustomer = {
@@ -366,6 +367,9 @@ export default function AccountOrderDetailPage() {
         try {
             setSavingApproval(true);
             await submitOrderApprovalResponse(order.id, selectedApprovalResponse);
+            if (auth.currentUser) {
+                await notifyInternalOrder({ user: auth.currentUser, orderId: order.id, event: "approval_response" });
+            }
         } catch (error) {
             console.error(error);
             window.alert("Kunne ikkje lagre svaret.");
@@ -408,6 +412,10 @@ export default function AccountOrderDetailPage() {
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             });
+
+            if (auth.currentUser) {
+                await notifyInternalOrder({ user: auth.currentUser, orderId: order.id, event: "change_request", message });
+            }
 
             setChangeRequestMessage("");
             setChangeRequestSuccess("Førespurnaden er sendt. Vi vurderer han før bestillinga eventuelt blir endra.");

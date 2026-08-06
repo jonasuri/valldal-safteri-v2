@@ -19,6 +19,7 @@ import {
     type B2BVariant,
 } from "@/lib/productsB2B";
 import { createOrder } from "@/lib/ordersFirestore";
+import { notifyInternalOrder } from "@/lib/internalOrderNotifications";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 
 type ViewMode = "liste" | "oppdag";
@@ -502,6 +503,8 @@ export default function AccountOrderPage() {
                 lineCount: orderLineCount,
                 unitCount: orderItemCount,
             });
+
+            await notifyInternalOrder({ user, orderId, event: "new_order" });
 
             clearOrder();
             setIsOrderOpen(false);
