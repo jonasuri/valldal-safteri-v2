@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { postPackedOrderInventory } from "@/lib/inventory/orderFulfillment";
+import { auth, db } from "@/lib/firebase";
+import { completeOrderPacking } from "@/lib/completeOrderPacking";
 import { groupOrderLinesByBrand, sortOrderLines } from "@/lib/orderLineSorting";
 
 type OrderLine = {
@@ -38,6 +38,7 @@ type OrderDetail = {
     customerCompanyName: string;
     lines: OrderLine[];
     packingLines: PackingLine[];
+    packingInventoryRevision: number;
 };
 
 function mapOrder(id: string, data: any): OrderDetail {
@@ -61,6 +62,9 @@ function mapOrder(id: string, data: any): OrderDetail {
         customerCompanyName,
         lines: Array.isArray(data.lines) ? data.lines : [],
         packingLines: Array.isArray(data.packing?.lines) ? data.packing.lines : [],
+        packingInventoryRevision: typeof data.packing?.inventoryRevision === "number"
+            ? data.packing.inventoryRevision
+            : data.inventoryFulfillment?.status === "posted" ? 1 : 0,
     };
 }
 
@@ -164,19 +168,12 @@ export default function OrderPickPage() {
         try {
             setSavingPacking(true);
 
-            const nextStatus = hasMissingProducts ? "partial" : "packed";
             const packingLines = buildPackingLines();
-            const inventoryFulfillment = hasMissingProducts
-                ? null
-                : await postPackedOrderInventory(orderId, packingLines);
-
-            await updateDoc(doc(db, "orders", orderId), {
-                status: nextStatus,
-                "packing.lines": packingLines,
-                "packing.status": hasMissingProducts ? "partial" : "complete",
-                "packing.completedAt": serverTimestamp(),
-                ...(inventoryFulfillment ? { inventoryFulfillment } : {}),
-                updatedAt: serverTimestamp(),
+            if (!auth.currentUser) throw new Error("UNAUTHORIZED");
+            await completeOrderPacking({
+                user: auth.currentUser,
+                orderId,
+                packingLines,
             });
 
             router.push(`/admin/orders/${orderId}`);
@@ -252,7 +249,7 @@ export default function OrderPickPage() {
 
     const hasMissingProducts = order.lines.some((line) => {
         const value = numericPackedQuantity(line);
-        return value > 0 && value < line.quantity;
+        return value < line.quantity;
     });
 
     const packingResultStatus = !allLinesHandled
@@ -328,7 +325,7 @@ export default function OrderPickPage() {
                     </div>
                     <div className="mt-5 flex flex-col gap-3 border-t border-neutral-200 pt-5 md:flex-row md:items-center md:justify-between">
                         <p className="text-sm text-neutral-500">
-                            Pakking blir lagra automatisk. Status blir først endra når pakking blir fullført.
+                            Pakking blir lagra automatisk. Lageret blir justert når du fullfører pakkinga.
                         </p>
 
                         <div className="flex items-center gap-3">
@@ -345,7 +342,11 @@ export default function OrderPickPage() {
                                 disabled={!canCompletePacking || savingPacking}
                                 className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                                {savingPacking ? "Fullfører …" : "Fullfør pakking"}
+                                {savingPacking
+                                    ? "Fullfører …"
+                                    : order.packingInventoryRevision > 0
+                                        ? "Oppdater pakking og lager"
+                                        : "Fullfør pakking"}
                             </button>
                         </div>
                     </div>
@@ -436,7 +437,9 @@ export default function OrderPickPage() {
                                                         placeholder="—"
                                                         onChange={(e) => {
                                                             const value = e.target.value;
-                                                            const nextValue = value === "" ? "" : Math.max(0, Math.floor(Number(value) || 0));
+                                                            const nextValue = value === ""
+                                                                ? ""
+                                                                : Math.min(line.quantity, Math.max(0, Math.floor(Number(value) || 0)));
 
                                                             setPacked((prev) => ({
                                                                 ...prev,
