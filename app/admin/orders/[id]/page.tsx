@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { updateOrderLines, type OrderStatus } from "@/lib/ordersFirestore";
+import { sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 import ProductOrderPicker from "../../../components/admin/ProductOrderPicker";
 
@@ -335,6 +336,7 @@ export default function AdminOrderDetailPage() {
     const [editableOrderLines, setEditableOrderLines] = useState<OrderLine[]>([]);
     const [savingOrderLines, setSavingOrderLines] = useState(false);
     const [showSaveOrderLinesConfirm, setShowSaveOrderLinesConfirm] = useState(false);
+    const [sendingCustomerEmail, setSendingCustomerEmail] = useState<"confirmation" | "approval" | "packing_slip" | null>(null);
 
     useEffect(() => {
         if (!orderId) return;
@@ -449,10 +451,8 @@ export default function AdminOrderDetailPage() {
         try {
             setSavingStatus(true);
 
-            await updateDoc(doc(db, "orders", orderId), {
-                status: nextStatus,
-                updatedAt: serverTimestamp(),
-            });
+            if (!auth.currentUser) throw new Error("UNAUTHORIZED");
+            await setAdminOrderStatus(auth.currentUser, orderId, nextStatus);
         } catch (error) {
             console.error(error);
             window.alert("Kunne ikkje oppdatere status.");
@@ -523,18 +523,29 @@ export default function AdminOrderDetailPage() {
 
         try {
             setSavingStatus(true);
-
-            await updateDoc(doc(db, "orders", orderId), {
-                status: "change_requested",
-                "approval.required": true,
-                "approval.status": "waiting",
-                updatedAt: serverTimestamp(),
-            });
+            setSendingCustomerEmail("approval");
+            if (!auth.currentUser) throw new Error("UNAUTHORIZED");
+            await sendAdminCustomerEmail(auth.currentUser, orderId, "approval");
         } catch (error) {
             console.error(error);
             window.alert("Kunne ikkje sende til kundegodkjenning.");
         } finally {
             setSavingStatus(false);
+            setSendingCustomerEmail(null);
+        }
+    }
+
+    async function sendCustomerDocument(type: "confirmation" | "packing_slip") {
+        if (!orderId || !auth.currentUser) return;
+        try {
+            setSendingCustomerEmail(type);
+            await sendAdminCustomerEmail(auth.currentUser, orderId, type);
+            window.alert(type === "confirmation" ? "Ordrebekreftinga er send." : "Følgjesetelen er send.");
+        } catch (error) {
+            console.error(error);
+            window.alert("Kunne ikkje sende e-posten. Kontroller at kunden har ei gyldig e-postadresse.");
+        } finally {
+            setSendingCustomerEmail(null);
         }
     }
 
@@ -1212,7 +1223,7 @@ export default function AdminOrderDetailPage() {
                                         disabled={savingStatus}
                                         className="inline-flex w-full items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
                                     >
-                                        Send til kundegodkjenning
+                                        {sendingCustomerEmail === "approval" ? "Sender …" : "Send til kundegodkjenning"}
                                     </button>
                                 ) : null}
                             </div>
@@ -1308,6 +1319,14 @@ export default function AdminOrderDetailPage() {
                                     <span>Ordrebekreftelse</span>
                                     <span aria-hidden="true">→</span>
                                 </Link>
+                                <button
+                                    type="button"
+                                    onClick={() => sendCustomerDocument("confirmation")}
+                                    disabled={Boolean(sendingCustomerEmail)}
+                                    className="inline-flex items-center justify-center rounded-[14px] border border-neutral-200 bg-white px-4 py-3 text-sm font-medium text-neutral-800 disabled:opacity-50"
+                                >
+                                    {sendingCustomerEmail === "confirmation" ? "Sender ordrebekrefting …" : "Send ordrebekrefting til kunden"}
+                                </button>
                                 <Link
                                     href={`/admin/orders/${order.id}/packing-slip`}
                                     className="inline-flex items-center justify-between rounded-[14px] border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-medium text-neutral-800 transition hover:bg-white"
@@ -1315,6 +1334,16 @@ export default function AdminOrderDetailPage() {
                                     <span>Følgeseddel</span>
                                     <span aria-hidden="true">→</span>
                                 </Link>
+                                {["shipped", "delivered", "picked_up"].includes(order.status) ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => sendCustomerDocument("packing_slip")}
+                                        disabled={Boolean(sendingCustomerEmail)}
+                                        className="inline-flex items-center justify-center rounded-[14px] border border-neutral-200 bg-white px-4 py-3 text-sm font-medium text-neutral-800 disabled:opacity-50"
+                                    >
+                                        {sendingCustomerEmail === "packing_slip" ? "Sender følgjesetel …" : "Send følgjesetel på nytt"}
+                                    </button>
+                                ) : null}
                             </div>
                         </section>
 

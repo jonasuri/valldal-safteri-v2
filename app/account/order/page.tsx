@@ -20,6 +20,7 @@ import {
 } from "@/lib/productsB2B";
 import { createOrder } from "@/lib/ordersFirestore";
 import { notifyInternalOrder } from "@/lib/internalOrderNotifications";
+import { sendAutomaticOrderConfirmation } from "@/lib/customerEmailActions";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 
 type ViewMode = "liste" | "oppdag";
@@ -505,6 +506,9 @@ export default function AccountOrderPage() {
             });
 
             await notifyInternalOrder({ user, orderId, event: "new_order" });
+            await sendAutomaticOrderConfirmation(user, orderId).catch((emailError) => {
+                console.error("Ordren vart lagra, men ordrebekreftinga feila", emailError);
+            });
 
             clearOrder();
             setIsOrderOpen(false);

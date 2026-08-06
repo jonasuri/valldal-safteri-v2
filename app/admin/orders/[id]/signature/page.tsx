@@ -5,6 +5,8 @@ import { useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { saveDeliverySignature } from "@/lib/ordersFirestore";
+import { auth } from "@/lib/firebase";
+import { setAdminOrderStatus } from "@/lib/customerEmailActions";
 
 export default function OrderSignaturePage() {
     const params = useParams();
@@ -93,6 +95,9 @@ export default function OrderSignaturePage() {
                 signatureDataUrl,
                 deliveryType,
             });
+            if (auth.currentUser) {
+                await setAdminOrderStatus(auth.currentUser, orderId, deliveryType);
+            }
 
             router.push(`/admin/orders/${orderId}`);
         } catch {
