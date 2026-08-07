@@ -4,9 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
 import { sendCustomerApprovalEmail, sendCustomerOrderConfirmation, sendCustomerPackingSlip } from "@/lib/customerOrderEmail";
 import type { ApprovalResponse } from "@/lib/ordersFirestore";
+import { canSendOrderEmails, isAdminEmail } from "@/lib/sandbox";
 
 export const runtime = "nodejs";
-const ADMIN_EMAILS = new Set(["post@valldalsafteri.no"]);
 const TYPES = new Set(["confirmation", "approval", "packing_slip"]);
 
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
         const authorization = request.headers.get("authorization") || "";
         if (!authorization.startsWith("Bearer ")) throw new Error("UNAUTHORIZED");
         const decoded = await getAdminAuth().verifyIdToken(authorization.slice(7));
-        if (!decoded.email || !ADMIN_EMAILS.has(decoded.email.trim().toLowerCase())) throw new Error("FORBIDDEN");
+        if (!isAdminEmail(decoded.email)) throw new Error("FORBIDDEN");
         const body = await request.json() as Record<string, unknown>;
         const orderId = text(body.orderId);
         const type = text(body.type);
@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
         if (!snapshot.exists) throw new Error("ORDER_NOT_FOUND");
         const order = snapshot.data() || {};
         if (!text(order.customerEmail)) throw new Error("MISSING_CUSTOMER_EMAIL");
+        if (!canSendOrderEmails(order)) return NextResponse.json({ ok: true, skipped: "sandbox" });
 
         if (type === "confirmation") {
             await sendCustomerOrderConfirmation(orderId, order);

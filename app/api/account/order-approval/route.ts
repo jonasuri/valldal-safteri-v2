@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
 import { sendInternalOrderEmail } from "@/lib/internalOrderEmail";
 import type { ApprovalResponse } from "@/lib/ordersFirestore";
+import { canSendOrderEmails } from "@/lib/sandbox";
 
 export const runtime = "nodejs";
 
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
 
         const updatedOrder = await orderRef.get();
         try {
+            if (!canSendOrderEmails(updatedOrder.data() || {})) return NextResponse.json({ ok: true });
             await sendInternalOrderEmail({
                 event: "approval_response",
                 orderId,

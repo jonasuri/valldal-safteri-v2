@@ -49,6 +49,7 @@ type ManualCustomer = {
     customerType: CustomerType;
     customerSource: "registered" | "manual";
     authUid: string;
+    sandboxEnabled: boolean;
 };
 
 function brandLabel(brand: B2BProductBrand) {
@@ -163,6 +164,9 @@ export default function NewManualOrderPage() {
     const [organizationNumber, setOrganizationNumber] = useState("");
     const [customerType, setCustomerType] = useState<CustomerType>("retail");
     const [note, setNote] = useState("");
+    const [selectedSandbox, setSelectedSandbox] = useState(false);
+    const [sandboxOrderMode, setSandboxOrderMode] = useState<"customer" | "manual">("manual");
+    const [sendSandboxEmails, setSendSandboxEmails] = useState(false);
 
     const [queryText, setQueryText] = useState("");
     const [brandFilter, setBrandFilter] = useState<BrandFilter>("alle");
@@ -214,6 +218,7 @@ export default function NewManualOrderPage() {
                             customerType: data.customerType === "grossist" ? "grossist" : "retail",
                             customerSource: data.customerSource === "manual" ? "manual" : "registered",
                             authUid: typeof data.authUid === "string" ? data.authUid : "",
+                            sandboxEnabled: data.sandbox?.enabled === true,
                         } satisfies ManualCustomer;
                     })
                 );
@@ -285,6 +290,9 @@ export default function NewManualOrderPage() {
         setCustomerPhone(customer.phone);
         setOrganizationNumber(customer.organizationNumber);
         setCustomerType(customer.customerType);
+        setSelectedSandbox(customer.sandboxEnabled);
+        setSandboxOrderMode("manual");
+        setSendSandboxEmails(false);
         setCustomerSearch(customer.displayName || customer.companyName);
     }
 
@@ -298,6 +306,8 @@ export default function NewManualOrderPage() {
         setCustomerPhone("");
         setOrganizationNumber("");
         setCustomerSearch("");
+        setSelectedSandbox(false);
+        setSendSandboxEmails(false);
     }
 
     function updateCustomerSearch(value: string) {
@@ -310,6 +320,8 @@ export default function NewManualOrderPage() {
             setCustomerEmail("");
             setCustomerPhone("");
             setOrganizationNumber("");
+            setSelectedSandbox(false);
+            setSendSandboxEmails(false);
         }
         setCustomerSearch(value);
     }
@@ -398,7 +410,12 @@ export default function NewManualOrderPage() {
                 customerPhone: customerPhone.trim(),
                 customerContactName: customerContactName.trim(),
                 organizationNumber: organizationNumber.trim(),
-                source: "manual",
+                source: selectedSandbox ? sandboxOrderMode : "manual",
+                sandbox: selectedSandbox ? {
+                    enabled: true,
+                    sendEmails: sendSandboxEmails,
+                    orderMode: sandboxOrderMode,
+                } : undefined,
                 note: note.trim(),
                 lines: lines.map((line) => ({
                     productId: line.productId,
@@ -415,7 +432,7 @@ export default function NewManualOrderPage() {
                 unitCount,
             });
 
-            if (customerEmail.trim() && auth.currentUser) {
+            if (customerEmail.trim() && auth.currentUser && (!selectedSandbox || sendSandboxEmails)) {
                 await sendAdminCustomerEmail(auth.currentUser, orderId, "confirmation").catch((emailError) => {
                     console.error("Kunne ikkje sende automatisk ordrebekrefting for manuell ordre", emailError);
                 });
@@ -747,6 +764,39 @@ export default function NewManualOrderPage() {
                                     <span>{formatCurrency(totalExVat)} eks. mva.</span>
                                 </div>
                             </div>
+
+                            {selectedSandbox ? (
+                                <div className="mt-5 rounded-[16px] border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950">
+                                    <div className="font-medium">Sandbox-ordre</div>
+                                    <p className="mt-1 text-xs leading-5 text-violet-800">
+                                        Ordren blir tydeleg merkt som test. E-post er avslått som standard.
+                                    </p>
+                                    <div className="mt-4 grid grid-cols-2 gap-2">
+                                        {(["customer", "manual"] as const).map((mode) => (
+                                            <button
+                                                key={mode}
+                                                type="button"
+                                                onClick={() => setSandboxOrderMode(mode)}
+                                                className={`rounded-full border px-3 py-2 text-xs font-medium ${sandboxOrderMode === mode ? "border-violet-800 bg-violet-800 text-white" : "border-violet-200 bg-white text-violet-900"}`}
+                                            >
+                                                {mode === "customer" ? "Kundekonto" : "Manuell ordre"}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <label className="mt-4 flex items-start gap-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={sendSandboxEmails}
+                                            onChange={(event) => setSendSandboxEmails(event.target.checked)}
+                                            className="mt-0.5 h-4 w-4"
+                                        />
+                                        <span>
+                                            Send test-e-post til {customerEmail || "testadressa"}
+                                            <span className="mt-1 block text-xs text-violet-700">Gjeld alle e-postar frå denne testordren.</span>
+                                        </span>
+                                    </label>
+                                </div>
+                            ) : null}
 
                             <button
                                 type="button"

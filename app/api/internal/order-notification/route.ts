@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
 import { sendInternalOrderEmail, type InternalOrderEvent } from "@/lib/internalOrderEmail";
+import { canSendOrderEmails } from "@/lib/sandbox";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
         const customerSnapshot = await db.collection("customers").doc(customerId).get();
         const customer = customerSnapshot.data();
         if (!customerSnapshot.exists || customer?.authUid !== decoded.uid) throw new Error("FORBIDDEN");
+        if (!canSendOrderEmails(order)) return NextResponse.json({ ok: true, skipped: "sandbox" });
 
         await sendInternalOrderEmail({
             event,

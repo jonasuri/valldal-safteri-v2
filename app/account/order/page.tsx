@@ -38,6 +38,7 @@ type AccountCustomer = {
     customerType: CustomerType;
     active: boolean;
     profileCompleted: boolean;
+    sandboxEnabled: boolean;
 };
 
 type OrderLine = {
@@ -83,6 +84,7 @@ async function fetchCustomerForUser(user: User): Promise<AccountCustomer | null>
         customerType: data.customerType === "grossist" ? "grossist" : "retail",
         active: typeof data.active === "boolean" ? data.active : true,
         profileCompleted: data.profileCompleted === true,
+        sandboxEnabled: data.sandbox?.enabled === true,
     };
 }
 
@@ -307,6 +309,7 @@ export default function AccountOrderPage() {
     const [brandFilter, setBrandFilter] = useState<BrandFilter>("alle");
     const [quantities, setQuantities] = useState<Record<string, number>>({});
     const [submittingOrder, setSubmittingOrder] = useState(false);
+    const [sendSandboxEmails, setSendSandboxEmails] = useState(false);
 
     useEffect(() => {
         setQuantities(readStoredQuantities());
@@ -492,6 +495,12 @@ export default function AccountOrderPage() {
                 customerPhone: customer.phone,
                 customerContactName: customer.contactName,
                 organizationNumber: customer.organizationNumber,
+                source: "customer",
+                sandbox: customer.sandboxEnabled ? {
+                    enabled: true,
+                    sendEmails: sendSandboxEmails,
+                    orderMode: "customer",
+                } : undefined,
                 lines: orderLines.map((line) => ({
                     productId: line.productId,
                     productName: line.productName,
@@ -507,10 +516,12 @@ export default function AccountOrderPage() {
                 unitCount: orderItemCount,
             });
 
-            await notifyInternalOrder({ user, orderId, event: "new_order" });
-            await sendAutomaticOrderConfirmation(user, orderId).catch((emailError) => {
-                console.error("Ordren vart lagra, men ordrebekreftinga feila", emailError);
-            });
+            if (!customer.sandboxEnabled || sendSandboxEmails) {
+                await notifyInternalOrder({ user, orderId, event: "new_order" });
+                await sendAutomaticOrderConfirmation(user, orderId).catch((emailError) => {
+                    console.error("Ordren vart lagra, men ordrebekreftinga feila", emailError);
+                });
+            }
 
             clearOrder();
             setIsOrderOpen(false);
@@ -1091,6 +1102,20 @@ export default function AccountOrderPage() {
                                 <span className="text-neutral-600">Sum</span>
                                 <span className="font-medium text-neutral-900">{formatB2BPriceExVat(orderSubtotal)}</span>
                             </div>
+                            {customer?.sandboxEnabled ? (
+                                <label className="mb-4 flex items-start gap-3 rounded-[14px] border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950">
+                                    <input
+                                        type="checkbox"
+                                        checked={sendSandboxEmails}
+                                        onChange={(event) => setSendSandboxEmails(event.target.checked)}
+                                        className="mt-0.5 h-4 w-4"
+                                    />
+                                    <span>
+                                        Send test-e-post til meg
+                                        <span className="mt-1 block text-xs text-violet-700">E-post er elles slått av for sandbox-ordrar.</span>
+                                    </span>
+                                </label>
+                            ) : null}
                             <button
                                 type="button"
                                 onClick={submitOrder}

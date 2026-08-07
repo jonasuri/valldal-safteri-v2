@@ -2,9 +2,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
 import { sendCustomerPackingSlip } from "@/lib/customerOrderEmail";
+import { canSendOrderEmails, isAdminEmail } from "@/lib/sandbox";
 
 export const runtime = "nodejs";
-const ADMIN_EMAILS = new Set(["post@valldalsafteri.no"]);
 const STATUSES = new Set(["new", "processing", "packed", "partial", "picked_up", "shipped", "delivered", "change_requested", "cancelled"]);
 const DELIVERY = new Set(["picked_up", "shipped", "delivered"]);
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
         const authorization = request.headers.get("authorization") || "";
         if (!authorization.startsWith("Bearer ")) throw new Error("UNAUTHORIZED");
         const decoded = await getAdminAuth().verifyIdToken(authorization.slice(7));
-        if (!decoded.email || !ADMIN_EMAILS.has(decoded.email.trim().toLowerCase())) throw new Error("FORBIDDEN");
+        if (!isAdminEmail(decoded.email)) throw new Error("FORBIDDEN");
         const body = await request.json() as Record<string, unknown>;
         const orderId = text(body.orderId);
         const status = text(body.status);
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
             const snapshot = await ref.get();
             const order = snapshot.data() || {};
             const alreadySent = order.customerEmails?.packingSlip?.[`${status}SentAt`];
-            if (!alreadySent && text(order.customerEmail)) {
+            if (!alreadySent && text(order.customerEmail) && canSendOrderEmails(order)) {
                 try {
                     await sendCustomerPackingSlip(orderId, order, status);
                     await ref.update({ [`customerEmails.packingSlip.${status}SentAt`]: FieldValue.serverTimestamp() });

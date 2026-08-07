@@ -1,10 +1,10 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
+import { isAdminEmail } from "@/lib/sandbox";
 
 export const runtime = "nodejs";
 
-const ADMIN_EMAILS = new Set(["post@valldalsafteri.no"]);
 
 type PackingLine = {
     productId: string;
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         const authorization = request.headers.get("authorization") || "";
         if (!authorization.startsWith("Bearer ")) throw new Error("UNAUTHORIZED");
         const decoded = await getAdminAuth().verifyIdToken(authorization.slice(7));
-        if (!decoded.email || !ADMIN_EMAILS.has(decoded.email.trim().toLowerCase())) {
+        if (!isAdminEmail(decoded.email)) {
             throw new Error("FORBIDDEN");
         }
 
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         if (packingLines.length !== orderLines.length) throw new Error("PACKING_LINES_DO_NOT_MATCH_ORDER");
 
         const inventorySnapshot = await db.collection("inventoryBalances").limit(1).get();
-        const inventoryEnabled = !inventorySnapshot.empty;
+        const inventoryEnabled = !inventorySnapshot.empty && order.sandbox?.enabled !== true;
         const productInfo = new Map<string, { sku: string; productName: string; variantName: string }>();
 
         if (inventoryEnabled) {

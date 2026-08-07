@@ -36,6 +36,8 @@ type OrderRow = {
     isBackorder: boolean;
     parentOrderNumber: string | null;
     source: "customer" | "manual";
+    isSandbox: boolean;
+    sandboxEmailsEnabled: boolean;
     invoiceStatus: "not_invoiced" | "invoiced";
     invoicedAt: string | null;
 };
@@ -272,6 +274,8 @@ export default function AdminOrdersPage() {
                     isBackorder: data.isBackorder === true,
                     parentOrderNumber: typeof data.parentOrderNumber === "string" ? data.parentOrderNumber : null,
                     source: data.source === "manual" ? "manual" : "customer",
+                    isSandbox: data.sandbox?.enabled === true,
+                    sandboxEmailsEnabled: data.sandbox?.sendEmails === true,
                     invoiceStatus: data.invoice?.status === "invoiced" ? "invoiced" : "not_invoiced",
                     invoicedAt: data.invoice?.invoicedAt?.toDate
                         ? data.invoice.invoicedAt.toDate().toLocaleDateString("nb-NO")
@@ -457,6 +461,11 @@ export default function AdminOrdersPage() {
                                     </div>
 
                                     <div className="mt-4 flex flex-wrap gap-2">
+                                        {order.isSandbox ? (
+                                            <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-800">
+                                                Sandbox · e-post {order.sandboxEmailsEnabled ? "på" : "av"}
+                                            </span>
+                                        ) : null}
                                         {pendingChangeRequestCounts[order.id] ? (
                                             <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800">
                                                 Endringsønske ({pendingChangeRequestCounts[order.id]})

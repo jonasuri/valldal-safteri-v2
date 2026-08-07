@@ -5,7 +5,7 @@ import { sendCustomerAccessEmail } from "@/lib/customerAccessEmail";
 
 export const runtime = "nodejs";
 
-const ADMIN_EMAILS = ["post@valldalsafteri.no"];
+const ADMIN_EMAILS = ["post@valldalsafteri.no", "jonassolvaguri@gmail.com"];
 const GENERIC_RESPONSE = {
     ok: true,
     message: "Dersom e-postadressa er registrert hos oss, sender vi ei passordlenke.",

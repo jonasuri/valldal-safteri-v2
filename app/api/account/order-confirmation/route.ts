@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
 import { sendCustomerOrderConfirmation } from "@/lib/customerOrderEmail";
+import { canSendOrderEmails } from "@/lib/sandbox";
 
 export const runtime = "nodejs";
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest) {
         const customerId = text(order.customerId);
         const customer = customerId ? await db.collection("customers").doc(customerId).get() : null;
         if (!customer?.exists || customer.data()?.authUid !== decoded.uid) throw new Error("FORBIDDEN");
+        if (!canSendOrderEmails(order)) return NextResponse.json({ ok: true, skipped: "sandbox" });
         if (order.customerEmails?.confirmationSentAt) return NextResponse.json({ ok: true, alreadySent: true });
         await sendCustomerOrderConfirmation(orderId, order);
         await ref.update({ "customerEmails.confirmationSentAt": FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });

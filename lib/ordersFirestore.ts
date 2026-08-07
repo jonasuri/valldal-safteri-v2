@@ -57,6 +57,11 @@ export type CreateOrderInput = {
     customerContactName?: string | null;
     organizationNumber?: string | null;
     source?: "customer" | "manual";
+    sandbox?: {
+        enabled: boolean;
+        sendEmails: boolean;
+        orderMode: "customer" | "manual";
+    };
     note?: string | null;
     lines: OrderLineInput[];
     totalExVat: number;
@@ -96,6 +101,7 @@ export async function createOrder(input: CreateOrderInput) {
         customerContactName: input.customerContactName || null,
         organizationNumber: input.organizationNumber || null,
         source: input.source || "customer",
+        sandbox: input.sandbox ?? null,
         note: input.note || null,
         lineCount: input.lineCount,
         unitCount: input.unitCount,

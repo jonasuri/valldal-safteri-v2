@@ -75,6 +75,7 @@ const defaultOpeningHours: OpeningHours = {
 
 const ADMIN_EMAILS = [
     "post@valldalsafteri.no",
+    "jonassolvaguri@gmail.com",
 ];
 
 function isAdminUser(user: User | null) {

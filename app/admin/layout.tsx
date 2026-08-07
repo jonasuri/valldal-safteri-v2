@@ -7,10 +7,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-
-const ADMIN_EMAILS = [
-    "post@valldalsafteri.no",
-];
+import { isAdminEmail } from "@/lib/sandbox";
 
 const ADMIN_NAVIGATION = [
     { href: "/admin", label: "Oversikt", shortLabel: "Oversikt" },
@@ -31,7 +28,7 @@ const ADMIN_SECONDARY_NAVIGATION = [
 function isAdminUser(user: User | null) {
     const email = user?.email?.trim().toLowerCase();
     if (!email) return false;
-    return ADMIN_EMAILS.map((adminEmail) => adminEmail.trim().toLowerCase()).includes(email);
+    return isAdminEmail(email);
 }
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

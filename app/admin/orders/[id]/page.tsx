@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { updateOrderLines, type OrderStatus } from "@/lib/ordersFirestore";
 import { sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
@@ -74,6 +74,12 @@ type OrderDetail = {
     backorder: {
         status: BackorderStatus;
         createdFromApproval: ApprovalResponse | null;
+        createdOrderId: string | null;
+    };
+    sandbox: {
+        enabled: boolean;
+        sendEmails: boolean;
+        orderMode: "customer" | "manual";
     };
     invoice: {
         status: "not_invoiced" | "invoiced";
@@ -235,6 +241,15 @@ function mapOrder(id: string, data: any): OrderDetail {
                 typeof data.backorder?.createdFromApproval === "string"
                     ? data.backorder.createdFromApproval
                     : null,
+            createdOrderId:
+                typeof data.backorder?.createdOrderId === "string"
+                    ? data.backorder.createdOrderId
+                    : null,
+        },
+        sandbox: {
+            enabled: data.sandbox?.enabled === true,
+            sendEmails: data.sandbox?.sendEmails === true,
+            orderMode: data.sandbox?.orderMode === "manual" ? "manual" : "customer",
         },
         invoice: {
             status: data.invoice?.status === "invoiced" ? "invoiced" : "not_invoiced",
@@ -331,6 +346,8 @@ export default function AdminOrderDetailPage() {
     const [manualApprovalResponse, setManualApprovalResponse] = useState<ApprovalResponse>("deliver_partial_later");
     const [manualApprovalSource, setManualApprovalSource] = useState<ApprovalResponseSource>("phone");
     const [manualApprovalNote, setManualApprovalNote] = useState("");
+    const [showManualApprovalForm, setShowManualApprovalForm] = useState(false);
+    const [showChangeCustomerDecision, setShowChangeCustomerDecision] = useState(false);
     const [changeRequests, setChangeRequests] = useState<OrderChangeRequest[]>([]);
     const [savingChangeRequestId, setSavingChangeRequestId] = useState<string | null>(null);
     const [changeRequestNotes, setChangeRequestNotes] = useState<Record<string, string>>({});
@@ -339,6 +356,7 @@ export default function AdminOrderDetailPage() {
     const [savingOrderLines, setSavingOrderLines] = useState(false);
     const [showSaveOrderLinesConfirm, setShowSaveOrderLinesConfirm] = useState(false);
     const [sendingCustomerEmail, setSendingCustomerEmail] = useState<"confirmation" | "approval" | "packing_slip" | null>(null);
+    const [deletingSandboxOrder, setDeletingSandboxOrder] = useState(false);
 
     useEffect(() => {
         if (!orderId) return;
@@ -553,6 +571,39 @@ export default function AdminOrderDetailPage() {
         }
     }
 
+    async function deleteSandboxOrder() {
+        if (!orderId || !order?.sandbox.enabled || !auth.currentUser) return;
+
+        const confirmed = await confirmAction({
+            title: "Slett sandbox-ordren?",
+            message: "Ordren, eventuelle restordrar og tilknytte testførespurnader blir sletta permanent. Dette kan ikkje angrast.",
+            confirmLabel: "Slett testordren",
+            destructive: true,
+        });
+        if (!confirmed) return;
+
+        try {
+            setDeletingSandboxOrder(true);
+            const token = await auth.currentUser.getIdToken();
+            const response = await fetch("/api/admin/orders/sandbox-delete", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ orderId }),
+            });
+            const result = await response.json().catch(() => ({})) as { error?: string };
+            if (!response.ok) throw new Error(result.error || "SANDBOX_DELETE_FAILED");
+            window.location.assign("/admin/orders");
+        } catch (error) {
+            console.error(error);
+            notify("Kunne ikkje slette sandbox-ordren.", "error");
+        } finally {
+            setDeletingSandboxOrder(false);
+        }
+    }
+
     async function updateCustomerDecision(
         response: ApprovalResponse,
         options?: {
@@ -583,32 +634,55 @@ export default function AdminOrderDetailPage() {
         try {
             setSavingStatus(true);
 
-            if (response === "deliver_partial_cancel_rest") {
-                await updateDoc(doc(db, "orders", orderId), {
+            if (order?.approval.response === response) {
+                notify("Dette er allereie kunden sitt registrerte val.", "info");
+                return;
+            }
+
+            const orderRef = doc(db, "orders", orderId);
+            const nextUpdates = response === "deliver_partial_cancel_rest"
+                ? {
                     status: "packed",
                     ...approvalUpdates,
                     "backorder.status": "cancelled",
+                    "backorder.createdOrderId": null,
+                    "backorder.createdAt": null,
                     updatedAt: serverTimestamp(),
-                });
-                return;
+                }
+                : response === "wait_for_complete"
+                    ? {
+                        status: "processing",
+                        ...approvalUpdates,
+                        "backorder.status": "waiting_for_stock",
+                        "backorder.createdOrderId": null,
+                        "backorder.createdAt": null,
+                        updatedAt: serverTimestamp(),
+                    }
+                    : {
+                        status: "packed",
+                        ...approvalUpdates,
+                        "backorder.status": "open",
+                        updatedAt: serverTimestamp(),
+                    };
+
+            if (order?.backorder.createdOrderId && response !== "deliver_partial_later") {
+                const batch = writeBatch(db);
+                batch.delete(doc(db, "orders", order.backorder.createdOrderId));
+                batch.update(orderRef, nextUpdates);
+                await batch.commit();
+            } else {
+                await updateDoc(orderRef, nextUpdates);
             }
 
-            if (response === "wait_for_complete") {
-                await updateDoc(doc(db, "orders", orderId), {
-                    status: "processing",
-                    ...approvalUpdates,
-                    "backorder.status": "waiting_for_stock",
-                    updatedAt: serverTimestamp(),
-                });
-                return;
-            }
-
-            await updateDoc(doc(db, "orders", orderId), {
-                status: "packed",
-                ...approvalUpdates,
-                "backorder.status": "open",
-                updatedAt: serverTimestamp(),
-            });
+            setShowChangeCustomerDecision(false);
+            notify(
+                response === "deliver_partial_cancel_rest"
+                    ? "Kundevalet er endra, og restordren er fjerna."
+                    : response === "wait_for_complete"
+                        ? "Kundevalet er endra. Ordren ventar no på resten."
+                        : "Kundevalet er endra. Restordre blir oppretta.",
+                "success"
+            );
         } catch (error) {
             console.error(error);
             notify(
@@ -758,7 +832,8 @@ export default function AdminOrderDetailPage() {
                 0
             );
 
-            const backorderRef = await addDoc(collection(db, "orders"), {
+            const backorderRef = doc(db, "orders", `backorder-${orderId}`);
+            await setDoc(backorderRef, {
                 orderNumber: null,
                 status: "new" as OrderStatus,
                 customerId: order.customerId,
@@ -777,6 +852,8 @@ export default function AdminOrderDetailPage() {
                 isBackorder: true,
                 parentOrderId: order.id,
                 parentOrderNumber: order.orderNumber,
+                source: order.sandbox.enabled ? order.sandbox.orderMode : "manual",
+                sandbox: order.sandbox.enabled ? order.sandbox : null,
                 packing: {
                     status: "not_started",
                     lines: backorderLines.map((line) => ({
@@ -814,6 +891,7 @@ export default function AdminOrderDetailPage() {
                 "backorder.createdAt": serverTimestamp(),
                 updatedAt: serverTimestamp(),
             });
+            notify("Pakkinga er stadfesta, og restordren er oppretta.", "success");
         } catch (error) {
             console.error(error);
             notify("Kunne ikkje opprette restordre.", "error");
@@ -854,9 +932,9 @@ export default function AdminOrderDetailPage() {
     const customerHasPortalAccess = Boolean(customer?.authUid);
     const customerCanReceiveEmail = Boolean(order?.customerEmail?.trim());
     const shouldShowCustomerApprovalButton = order?.status === "partial" && customerCanReceiveEmail;
-    const shouldShowManualCustomerDecision =
+    const shouldShowCustomerDecision =
         order?.approval.status === "waiting" ||
-        (order?.status === "partial" && !customerHasPortalAccess);
+        order?.status === "partial";
     const pendingChangeRequests = changeRequests.filter((request) => request.status === "pending");
     const resolvedChangeRequests = changeRequests.filter((request) => request.status !== "pending");
     const nextAction = (() => {
@@ -1006,6 +1084,12 @@ export default function AdminOrderDetailPage() {
                                 Ordre
                             </p>
 
+                            {order.sandbox.enabled ? (
+                                <span className="mt-3 inline-flex rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-800">
+                                    Sandbox · {order.sandbox.orderMode === "manual" ? "manuell ordre" : "kundekonto"} · e-post {order.sandbox.sendEmails ? "på" : "av"}
+                                </span>
+                            ) : null}
+
                             <h1 className="mt-2 break-words text-4xl tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>
                                 {order.orderNumber || order.id.slice(0, 8).toUpperCase()}
                             </h1>
@@ -1028,6 +1112,18 @@ export default function AdminOrderDetailPage() {
                             {statusLabels[order.status]}
                         </span>
                     </div>
+                    {order.sandbox.enabled ? (
+                        <div className="mt-5 border-t border-violet-100 pt-4">
+                            <button
+                                type="button"
+                                onClick={deleteSandboxOrder}
+                                disabled={deletingSandboxOrder}
+                                className="rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                            >
+                                {deletingSandboxOrder ? "Slettar …" : "Slett sandbox-ordre"}
+                            </button>
+                        </div>
+                    ) : null}
                 </header>
 
                 <section className={`mt-5 flex flex-col gap-5 rounded-[22px] border p-5 md:flex-row md:items-center md:justify-between md:p-6 ${
@@ -1295,16 +1391,6 @@ export default function AdminOrderDetailPage() {
                                     Opne plukkliste
                                 </Link>
 
-                                {shouldShowCustomerApprovalButton ? (
-                                    <button
-                                        type="button"
-                                        onClick={sendForApproval}
-                                        disabled={savingStatus}
-                                        className="inline-flex w-full items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
-                                    >
-                                        {sendingCustomerEmail === "approval" ? "Sender …" : "Send til kundegodkjenning"}
-                                    </button>
-                                ) : null}
                             </div>
                         </section>
 
@@ -1658,19 +1744,43 @@ export default function AdminOrderDetailPage() {
                             </section>
                         ) : null}
                         {/* 10. Ventar på kundesvar */}
-                        {shouldShowManualCustomerDecision ? (
+                        {shouldShowCustomerDecision ? (
                             <section className="order-10 rounded-[20px] border border-amber-200 bg-amber-50 p-5 md:order-7">
                                 <h2 className="text-lg font-medium text-amber-900">
-                                    {order.approval.status === "waiting" ? "Ventar på kundesvar" : "Registrer avtale med kunde"}
+                                    {order.approval.status === "waiting" ? "Ventar på kundesvar" : "Kundegodkjenning"}
                                 </h2>
                                 <p className="mt-3 text-sm leading-6 text-amber-800">
-                                    {customerHasPortalAccess
+                                    {order.approval.status === "waiting"
+                                        ? "Godkjenningsførespurnaden er send. Kunden kan svare frå e-posten eller i kundeportalen dersom dei har tilgang."
+                                        : customerHasPortalAccess
                                         ? "Kunden kan svare i portalen. Dersom svaret kjem på telefon, e-post eller direkte, kan du registrere valet her på vegner av kunden."
                                         : customerCanReceiveEmail
-                                            ? "Kunden kan svare direkte frå godkjenningsmeldinga på e-post. Dersom svaret kjem på telefon, vanleg e-post eller direkte, kan du registrere valet her."
+                                            ? "Send ei godkjenningsførespurnad på e-post. Kunden kan svare direkte frå meldinga utan å ha kundekonto."
                                             : "Denne kunden har ikkje registrert e-postadresse. Ring kunden og registrer avtalen her når de har fått svar."}
                                 </p>
 
+                                {shouldShowCustomerApprovalButton ? (
+                                    <button
+                                        type="button"
+                                        onClick={sendForApproval}
+                                        disabled={savingStatus}
+                                        className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-amber-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-800 disabled:opacity-50"
+                                    >
+                                        {sendingCustomerEmail === "approval" ? "Sender …" : "Send til kundegodkjenning"}
+                                    </button>
+                                ) : null}
+
+                                {customerCanReceiveEmail && !showManualApprovalForm ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowManualApprovalForm(true)}
+                                        className="mt-5 inline-flex w-full items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+                                    >
+                                        Registrer svar manuelt
+                                    </button>
+                                ) : null}
+
+                                {!customerCanReceiveEmail || showManualApprovalForm ? (
                                 <div className="mt-5 space-y-4">
                                     <label className="block text-sm font-medium text-amber-950">
                                         Kundesvar
@@ -1718,7 +1828,17 @@ export default function AdminOrderDetailPage() {
                                     >
                                         {savingStatus ? "Lagrar …" : customerHasPortalAccess ? "Registrer kundesvar" : "Registrer avtale"}
                                     </button>
+                                    {customerCanReceiveEmail ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowManualApprovalForm(false)}
+                                            className="w-full text-sm text-amber-800 underline-offset-4 hover:underline"
+                                        >
+                                            Lukk manuell registrering
+                                        </button>
+                                    ) : null}
                                 </div>
+                                ) : null}
                             </section>
                         ) : null}
                         {/* 10. Kundesvar */}
@@ -1780,31 +1900,49 @@ export default function AdminOrderDetailPage() {
                                         </div>
                                     </div>
                                 ) : null}
-                                <div className="mt-4 grid gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowChangeCustomerDecision((value) => !value)}
+                                    className="mt-4 w-full rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100"
+                                >
+                                    {showChangeCustomerDecision ? "Lukk endring" : "Kunden ønskjer å endre valet"}
+                                </button>
+
+                                {showChangeCustomerDecision ? (
+                                <div className="mt-4 rounded-[14px] border border-amber-200 bg-amber-50 p-4">
+                                    <p className="text-sm leading-6 text-amber-900">
+                                        Bruk dette berre dersom kunden sjølv har endra avgjerda. Dersom du vel «slett resten», blir ei oppretta restordre fjerna.
+                                    </p>
+                                    <div className="mt-4 grid gap-2">
                                     <button
                                         type="button"
                                         onClick={() => updateCustomerDecision("deliver_partial_later")}
+                                        disabled={savingStatus || order.approval.response === "deliver_partial_later"}
                                         className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
                                     >
-                                        Klar for levering + restordre
+                                        Endre til: lever no + restordre
                                     </button>
 
                                     <button
                                         type="button"
                                         onClick={() => updateCustomerDecision("deliver_partial_cancel_rest")}
+                                        disabled={savingStatus || order.approval.response === "deliver_partial_cancel_rest"}
                                         className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
                                     >
-                                        Klar for levering utan restordre
+                                        Endre til: lever no og slett resten
                                     </button>
 
                                     <button
                                         type="button"
                                         onClick={() => updateCustomerDecision("wait_for_complete")}
+                                        disabled={savingStatus || order.approval.response === "wait_for_complete"}
                                         className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
                                     >
-                                        Vent på resten
+                                        Endre til: vent på resten
                                     </button>
+                                    </div>
                                 </div>
+                                ) : null}
                             </section>
                         ) : null}
 
@@ -1852,8 +1990,16 @@ export default function AdminOrderDetailPage() {
                             <section className="order-12 rounded-[24px] border border-emerald-200 bg-emerald-50 p-6 md:order-12">
                                 <h2 className="text-lg font-medium text-emerald-900">Restordre oppretta</h2>
                                 <p className="mt-3 text-sm leading-6 text-emerald-800">
-                                    Restordre er oppretta automatisk. Denne ordren er klar for levering.
+                                    Pakkinga er stadfesta og restordren er oppretta automatisk. Denne ordren er klar for levering.
                                 </p>
+                                {order.backorder.createdOrderId ? (
+                                    <Link
+                                        href={`/admin/orders/${order.backorder.createdOrderId}`}
+                                        className="mt-4 inline-flex rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-900 transition hover:bg-emerald-100"
+                                    >
+                                        Opne restordre
+                                    </Link>
+                                ) : null}
                             </section>
                         ) : null}
                         <section className="order-last rounded-[24px] border border-neutral-200 bg-white p-5 md:hidden">

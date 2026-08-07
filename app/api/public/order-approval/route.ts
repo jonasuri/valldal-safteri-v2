@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebaseAdmin";
 import { sendInternalOrderEmail } from "@/lib/internalOrderEmail";
 import type { ApprovalResponse } from "@/lib/ordersFirestore";
+import { canSendOrderEmails } from "@/lib/sandbox";
 
 export const runtime = "nodejs";
 const RESPONSES = new Set<ApprovalResponse>(["deliver_partial_later", "deliver_partial_cancel_rest", "wait_for_complete"]);
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
             });
         });
         const updated = await snapshot.ref.get();
-        try { await sendInternalOrderEmail({ event: "approval_response", orderId: snapshot.id, order: updated.data() || {} }); }
+        try { if (canSendOrderEmails(updated.data() || {})) await sendInternalOrderEmail({ event: "approval_response", orderId: snapshot.id, order: updated.data() || {} }); }
         catch (error) { console.error("Kundesvaret vart lagra, men internt varsel feila", error); }
         return NextResponse.json({ ok: true });
     } catch (error) {
