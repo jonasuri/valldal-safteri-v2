@@ -478,7 +478,7 @@ export default function OrderPickPage() {
                             ? "Fullfører …"
                             : order.packingInventoryRevision > 0
                                 ? "Oppdater pakking og lager"
-                                : "Fullfør pakking og trekk lager"}
+                                : "Fullfør pakking"}
                     </button>
                 </div>
             </div>

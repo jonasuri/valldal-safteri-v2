@@ -75,21 +75,27 @@ export async function POST(request: NextRequest) {
         }
         if (packingLines.length !== orderLines.length) throw new Error("PACKING_LINES_DO_NOT_MATCH_ORDER");
 
-        const productIds = [...new Set(packingLines.map((line) => line.productId))];
-        const products = await Promise.all(productIds.map((id) => db.collection("products").doc(id).get()));
-        const productsById = new Map(products.map((snapshot) => [snapshot.id, snapshot.data() || {}]));
+        const inventorySnapshot = await db.collection("inventoryBalances").limit(1).get();
+        const inventoryEnabled = !inventorySnapshot.empty;
         const productInfo = new Map<string, { sku: string; productName: string; variantName: string }>();
-        for (const line of packingLines) {
-            const product = productsById.get(line.productId);
-            const variants = Array.isArray(product?.variants) ? product.variants as Array<Record<string, unknown>> : [];
-            const variant = variants.find((item) => text(item.id) === line.variantId);
-            const sku = text(variant?.itemNumber ?? variant?.sku);
-            if (!product || !variant || !sku) throw new Error("MISSING_PRODUCT_SKU");
-            productInfo.set(`${line.productId}:${line.variantId}`, {
-                sku,
-                productName: text(product.name),
-                variantName: text(variant.label ?? variant.name),
-            });
+
+        if (inventoryEnabled) {
+            const productIds = [...new Set(packingLines.map((line) => line.productId))];
+            const products = await Promise.all(productIds.map((id) => db.collection("products").doc(id).get()));
+            const productsById = new Map(products.map((snapshot) => [snapshot.id, snapshot.data() || {}]));
+
+            for (const line of packingLines) {
+                const product = productsById.get(line.productId);
+                const variants = Array.isArray(product?.variants) ? product.variants as Array<Record<string, unknown>> : [];
+                const variant = variants.find((item) => text(item.id) === line.variantId);
+                const sku = text(variant?.itemNumber ?? variant?.sku);
+                if (!product || !variant || !sku) throw new Error("MISSING_PRODUCT_SKU");
+                productInfo.set(`${line.productId}:${line.variantId}`, {
+                    sku,
+                    productName: text(product.name),
+                    variantName: text(variant.label ?? variant.name),
+                });
+            }
         }
 
         await db.runTransaction(async (transaction) => {
@@ -111,12 +117,12 @@ export async function POST(request: NextRequest) {
                 Number(line.quantity) || 0,
             ]));
             const revision = (Number(current.packing?.inventoryRevision) || 0) + 1;
-            const adjustments = packingLines.flatMap((line) => {
+            const adjustments = inventoryEnabled ? packingLines.flatMap((line) => {
                 const key = `${line.productId}:${line.variantId}`;
                 const delta = line.packedQuantity - (previousByKey.get(key) || 0);
                 if (delta === 0) return [];
                 return [{ line, delta, info: productInfo.get(key)! }];
-            });
+            }) : [];
             const prepared = adjustments.map((adjustment) => ({
                 ...adjustment,
                 movementRef: db.collection("inventoryMovements").doc(),
@@ -189,31 +195,40 @@ export async function POST(request: NextRequest) {
             const previousMovementIds = Array.isArray(current.inventoryFulfillment?.movementIds)
                 ? current.inventoryFulfillment.movementIds.filter((id: unknown) => typeof id === "string")
                 : [];
-            transaction.update(orderRef, {
+            const orderUpdate: Record<string, unknown> = {
                 status: hasMissingProducts ? "partial" : "packed",
                 "packing.lines": packingLines,
                 "packing.status": hasMissingProducts ? "partial" : "complete",
                 "packing.completedAt": FieldValue.serverTimestamp(),
                 "packing.updatedAt": FieldValue.serverTimestamp(),
-                "packing.inventoryRevision": revision,
-                "packing.inventoryPostedLines": packingLines.map((line) => ({
-                    productId: line.productId,
-                    variantId: line.variantId,
-                    quantity: line.packedQuantity,
-                })),
-                inventoryFulfillment: {
+                inventoryFulfillment: inventoryEnabled ? {
                     status: "posted",
                     postedAt: FieldValue.serverTimestamp(),
                     movementIds: [...previousMovementIds, ...movementIds],
                     lineCount: packingLines.filter((line) => line.packedQuantity > 0).length,
                     unitCount: packingLines.reduce((sum, line) => sum + line.packedQuantity, 0),
                     revision,
+                } : {
+                    status: "skipped",
+                    reason: "inventory_not_initialized",
+                    skippedAt: FieldValue.serverTimestamp(),
                 },
                 updatedAt: FieldValue.serverTimestamp(),
-            });
+            };
+
+            if (inventoryEnabled) {
+                orderUpdate["packing.inventoryRevision"] = revision;
+                orderUpdate["packing.inventoryPostedLines"] = packingLines.map((line) => ({
+                    productId: line.productId,
+                    variantId: line.variantId,
+                    quantity: line.packedQuantity,
+                }));
+            }
+
+            transaction.update(orderRef, orderUpdate);
         });
 
-        return NextResponse.json({ ok: true });
+        return NextResponse.json({ ok: true, inventoryUpdated: inventoryEnabled });
     } catch (error) {
         console.error("Fullføring av pakking feila", error);
         const message = error instanceof Error ? error.message : "PACKING_FAILED";
