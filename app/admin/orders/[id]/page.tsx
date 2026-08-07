@@ -9,6 +9,7 @@ import { updateOrderLines, type OrderStatus } from "@/lib/ordersFirestore";
 import { sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 import ProductOrderPicker from "../../../components/admin/ProductOrderPicker";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
 
 type OrderLine = {
     productId: string;
@@ -316,6 +317,7 @@ function getMissingOrderLines(order: OrderDetail) {
 }
 
 export default function AdminOrderDetailPage() {
+    const { notify, confirmAction } = useSystemFeedback();
     const params = useParams();
     const orderId = typeof params.id === "string" ? params.id : "";
     const [order, setOrder] = useState<OrderDetail | null>(null);
@@ -432,18 +434,19 @@ export default function AdminOrderDetailPage() {
 
     async function updateOrderStatus(nextStatus: OrderStatus) {
         if (nextStatus === "packed") {
-            window.alert(
-                "Fullfør pakking frå plukklista. Då blir varene trekte korrekt frå lageret."
-            );
+            notify("Fullfør pakking frå plukklista. Då blir varene trekte korrekt frå lageret.", "info");
             return;
         }
 
         if (!orderId) return;
 
         if (nextStatus === "cancelled") {
-            const confirmed = window.confirm(
-                "Er du sikker på at du vil kansellere denne ordren? Ordren blir flytta til historikk."
-            );
+            const confirmed = await confirmAction({
+                title: "Kanseller ordre?",
+                message: "Ordren blir flytta til historikken.",
+                confirmLabel: "Kanseller ordre",
+                destructive: true,
+            });
 
             if (!confirmed) return;
         }
@@ -455,7 +458,7 @@ export default function AdminOrderDetailPage() {
             await setAdminOrderStatus(auth.currentUser, orderId, nextStatus);
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje oppdatere status.");
+            notify("Kunne ikkje oppdatere status.", "error");
         } finally {
             setSavingStatus(false);
         }
@@ -474,7 +477,7 @@ export default function AdminOrderDetailPage() {
             });
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje lagre ordrenummer.");
+            notify("Kunne ikkje lagre ordrenummer.", "error");
         } finally {
             setSavingStatus(false);
         }
@@ -493,7 +496,7 @@ export default function AdminOrderDetailPage() {
             });
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje markere ordren som fakturert.");
+            notify("Kunne ikkje markere ordren som fakturert.", "error");
         } finally {
             setSavingInvoice(false);
         }
@@ -512,7 +515,7 @@ export default function AdminOrderDetailPage() {
             });
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje markere ordren som ikkje fakturert.");
+            notify("Kunne ikkje markere ordren som ikkje fakturert.", "error");
         } finally {
             setSavingInvoice(false);
         }
@@ -528,7 +531,7 @@ export default function AdminOrderDetailPage() {
             await sendAdminCustomerEmail(auth.currentUser, orderId, "approval");
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje sende til kundegodkjenning.");
+            notify("Kunne ikkje sende til kundegodkjenning.", "error");
         } finally {
             setSavingStatus(false);
             setSendingCustomerEmail(null);
@@ -540,10 +543,10 @@ export default function AdminOrderDetailPage() {
         try {
             setSendingCustomerEmail(type);
             await sendAdminCustomerEmail(auth.currentUser, orderId, type);
-            window.alert(type === "confirmation" ? "Ordrebekreftinga er send." : "Følgjesetelen er send.");
+            notify(type === "confirmation" ? "Ordrebekreftinga er send." : "Følgjesetelen er send.", "success");
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje sende e-posten. Kontroller at kunden har ei gyldig e-postadresse.");
+            notify("Kunne ikkje sende e-posten. Kontroller at kunden har ei gyldig e-postadresse.", "error");
         } finally {
             setSendingCustomerEmail(null);
         }
@@ -607,10 +610,11 @@ export default function AdminOrderDetailPage() {
             });
         } catch (error) {
             console.error(error);
-            window.alert(
+            notify(
                 error instanceof Error
                     ? error.message
-                    : "Kunne ikkje oppdatere kundesvar."
+                    : "Kunne ikkje oppdatere kundesvar.",
+                "error"
             );
         } finally {
             setSavingStatus(false);
@@ -634,9 +638,11 @@ export default function AdminOrderDetailPage() {
         const adminNote = changeRequestNotes[request.id]?.trim() || "";
 
         if (status === "approved") {
-            const confirmed = window.confirm(
-                "Har du kontrollert førespurnaden og gjort nødvendige endringar i ordren? Førespurnaden blir merka som godkjend/handtert."
-            );
+            const confirmed = await confirmAction({
+                title: "Godkjenn førespurnaden?",
+                message: "Stadfest at du har kontrollert førespurnaden og gjort nødvendige endringar i ordren. Førespurnaden blir merkt som handtert.",
+                confirmLabel: "Merk som handtert",
+            });
 
             if (!confirmed) return;
         }
@@ -653,7 +659,7 @@ export default function AdminOrderDetailPage() {
             });
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje oppdatere førespurnaden.");
+            notify("Kunne ikkje oppdatere førespurnaden.", "error");
         } finally {
             setSavingChangeRequestId(null);
         }
@@ -663,7 +669,7 @@ export default function AdminOrderDetailPage() {
         if (!order) return;
 
         if (!["new", "processing", "change_requested"].includes(order.status)) {
-            window.alert("Denne ordren er for langt i behandling til å endrast direkte her.");
+            notify("Denne ordren er komen for langt i behandling til å endrast direkte her.", "error");
             return;
         }
 
@@ -702,7 +708,7 @@ export default function AdminOrderDetailPage() {
             .filter((line) => line.quantity > 0);
 
         if (!nextLines.length) {
-            window.alert("Ordren må ha minst éi varelinje.");
+            notify("Ordren må ha minst éi varelinje.", "error");
             return;
         }
 
@@ -726,7 +732,7 @@ export default function AdminOrderDetailPage() {
             setEditingOrderLines(false);
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje lagre ordrelinjene.");
+            notify("Kunne ikkje lagre ordrelinjene.", "error");
         } finally {
             setSavingOrderLines(false);
         }
@@ -737,7 +743,7 @@ export default function AdminOrderDetailPage() {
         const backorderLines = getMissingOrderLines(order);
 
         if (!backorderLines.length) {
-            window.alert("Det finst ingen manglande varer å opprette restordre frå.");
+            notify("Det finst ingen manglande varer å opprette restordre frå.", "info");
             return;
         }
 
@@ -809,7 +815,7 @@ export default function AdminOrderDetailPage() {
             });
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje opprette restordre.");
+            notify("Kunne ikkje opprette restordre.", "error");
         } finally {
             setCreatingBackorder(false);
         }
@@ -851,6 +857,62 @@ export default function AdminOrderDetailPage() {
         (order?.status === "partial" && !customerHasPortalAccess);
     const pendingChangeRequests = changeRequests.filter((request) => request.status === "pending");
     const resolvedChangeRequests = changeRequests.filter((request) => request.status !== "pending");
+    const nextAction = (() => {
+        if (order?.status === "new") {
+            return {
+                eyebrow: "Neste steg",
+                title: "Registrer ordrenummer",
+                description: "Legg inn nummeret frå ordresystemet. Ordren går då vidare til behandling.",
+                href: "#order-number",
+                label: "Gå til ordrenummer",
+            };
+        }
+        if (order?.status === "processing") {
+            return {
+                eyebrow: "Neste steg",
+                title: "Pakk ordren",
+                description: "Opne plukklista, registrer pakka mengde og fullfør pakkinga.",
+                href: `/admin/orders/${order.id}/pick`,
+                label: "Opne plukkliste",
+            };
+        }
+        if (order?.status === "partial" && order.approval.status !== "waiting") {
+            return {
+                eyebrow: "Neste steg",
+                title: "Avklar manglande varer",
+                description: "Send ordren til kunden for godkjenning, eller registrer avtalen manuelt.",
+                href: "#packing",
+                label: "Gå til kundegodkjenning",
+            };
+        }
+        if (order?.status === "partial" || order?.status === "change_requested") {
+            return {
+                eyebrow: "Ventar",
+                title: order.status === "change_requested" ? "Kunden har sendt eit endringsønske" : "Ventar på kundesvar",
+                description: order.status === "change_requested"
+                    ? "Kontroller ønsket og oppdater ordren før førespurnaden blir merkt som handtert."
+                    : "Kunden må velje korleis dei manglande varene skal handterast.",
+                href: "#customer-response",
+                label: "Sjå oppfølging",
+            };
+        }
+        if (order?.status === "packed") {
+            return {
+                eyebrow: "Neste steg",
+                title: "Klar for utlevering",
+                description: "Marker ordren som send, levert eller henta når varene går frå dykk.",
+                href: "#order-status",
+                label: "Oppdater status",
+            };
+        }
+        return {
+            eyebrow: "Status",
+            title: statusLabels[order?.status || "processing"],
+            description: "Ordren er avslutta. Dokument, fakturering og mottak ligg framleis tilgjengeleg nedanfor.",
+            href: "#documents",
+            label: "Sjå dokument",
+        };
+    })();
 
     if (loading) {
         return (
@@ -881,7 +943,7 @@ export default function AdminOrderDetailPage() {
     }
 
     return (
-        <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
+        <main className="admin-order-detail min-h-screen text-[color:var(--admin-ink)]">
             {showSaveOrderLinesConfirm ? (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
                     <div className="w-full max-w-md rounded-[24px] border border-neutral-200 bg-white p-6 shadow-xl">
@@ -919,15 +981,15 @@ export default function AdminOrderDetailPage() {
                     </div>
                 </div>
             ) : null}
-            <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
+            <div className="mx-auto max-w-7xl px-5 py-7 md:px-8 md:py-10">
                 <Link
                     href="/admin/orders"
-                    className="text-sm text-neutral-600 underline-offset-4 hover:underline"
+                    className="text-xs font-medium text-[color:var(--admin-muted)] underline-offset-4 hover:text-[color:var(--admin-ink)] hover:underline"
                 >
                     ← Tilbake til ordre
                 </Link>
 
-                <div className="mt-5 rounded-[24px] border border-neutral-200 bg-white p-5 md:mt-6 md:p-6">
+                <header className="mt-5 rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:mt-6 md:p-7">
                     {order.status === "cancelled" ? (
                         <section className="mt-5 rounded-[24px] border border-neutral-300 bg-neutral-100 p-5 text-neutral-800 md:mt-6 md:p-6">
                             <h2 className="text-lg font-medium">Kansellert ordre</h2>
@@ -938,11 +1000,11 @@ export default function AdminOrderDetailPage() {
                     ) : null}
                     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div>
-                            <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">
-                                Ordredetaljar
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">
+                                Ordre
                             </p>
 
-                            <h1 className="mt-2 break-words text-4xl font-semibold tracking-tight md:text-3xl">
+                            <h1 className="mt-2 break-words text-4xl tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>
                                 {order.orderNumber || order.id.slice(0, 8).toUpperCase()}
                             </h1>
 
@@ -964,10 +1026,25 @@ export default function AdminOrderDetailPage() {
                             {statusLabels[order.status]}
                         </span>
                     </div>
-                </div>
+                </header>
+
+                <section className={`mt-5 flex flex-col gap-5 rounded-[22px] border p-5 md:flex-row md:items-center md:justify-between md:p-6 ${
+                    order.status === "change_requested" || order.status === "partial"
+                        ? "border-amber-200 bg-amber-50/80"
+                        : "border-[color:var(--admin-line)] bg-[color:var(--admin-card)]"
+                }`}>
+                    <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-muted)]">{nextAction.eyebrow}</p>
+                        <h2 className="mt-2 text-xl font-semibold tracking-tight">{nextAction.title}</h2>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--admin-muted)]">{nextAction.description}</p>
+                    </div>
+                    <Link href={nextAction.href} className="inline-flex shrink-0 items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)]">
+                        {nextAction.label}
+                    </Link>
+                </section>
 
                 <div className="mt-5 grid gap-5 md:mt-6 md:gap-6 lg:grid-cols-[2fr_1fr]">
-                    <section className="hidden rounded-[24px] border border-neutral-200 bg-white p-5 md:block md:p-6">
+                    <section className="hidden rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:block md:p-6">
                         <div className="flex items-start justify-between gap-4">
                             <div>
                                 <h2 className="text-lg font-medium">Ordrelinjer</h2>
@@ -1192,9 +1269,9 @@ export default function AdminOrderDetailPage() {
                         </div>
                     </section>
 
-                    <aside className="flex flex-col gap-6">
+                    <aside className="flex flex-col gap-5">
                         {/* 1. Pakking og restordre */}
-                        <section className="order-2 rounded-[24px] border border-amber-200 bg-amber-50 p-6 md:order-8">
+                        <section id="packing" className="order-2 scroll-mt-6 rounded-[20px] border border-amber-200 bg-amber-50 p-5 md:order-1">
                             <h2 className="text-lg font-medium text-amber-900">Pakking og restordre</h2>
 
                             <div className="mt-4 space-y-3 text-sm text-amber-900">
@@ -1230,7 +1307,7 @@ export default function AdminOrderDetailPage() {
                         </section>
 
                         {/* 2. Kunde */}
-                        <section className="order-4 rounded-[24px] border border-neutral-200 bg-white p-6 md:order-2">
+                        <section className="order-4 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-2">
                             <div className="flex items-start justify-between gap-4">
                                 <h2 className="text-lg font-medium">Kunde</h2>
                                 {order.customerId ? (
@@ -1267,7 +1344,7 @@ export default function AdminOrderDetailPage() {
 
                         {/* 3. Leveringsinfo (optional) */}
                         {customer?.openingHours ? (
-                            <section className="order-5 rounded-[24px] border border-rose-100 bg-[#fffafa] p-6 md:order-3">
+                            <section className="order-5 rounded-[20px] border border-rose-100 bg-[#fffafa] p-5 md:order-3">
                                 <h2 className="text-lg font-medium text-rose-900">Leveringsinfo</h2>
                                 <p className="mt-3 whitespace-pre-line text-sm leading-6 text-neutral-700">
                                     {customer.openingHours}
@@ -1276,7 +1353,7 @@ export default function AdminOrderDetailPage() {
                         ) : null}
 
                         {/* 4. Mottak */}
-                        <section className="order-3 rounded-[24px] border border-neutral-200 bg-white p-6 md:order-9">
+                        <section className="order-3 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-8">
                             <h2 className="text-lg font-medium">Mottak</h2>
                             <p className="mt-1 text-sm text-neutral-500">
                                 Signer digitalt ved levering eller henting.
@@ -1305,7 +1382,7 @@ export default function AdminOrderDetailPage() {
                         </section>
 
                         {/* 5. Dokument */}
-                        <section className="order-6 rounded-[24px] border border-neutral-200 bg-white p-6 md:order-5">
+                        <section id="documents" className="order-6 scroll-mt-6 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-9">
                             <h2 className="text-lg font-medium">Dokument</h2>
                             <p className="mt-1 text-sm text-neutral-500">
                                 Finn att ordrebekreftelse og følgeseddel for denne ordren.
@@ -1348,7 +1425,7 @@ export default function AdminOrderDetailPage() {
                         </section>
 
                         {/* 6. Ordrenummer */}
-                        <section className="order-7 rounded-[24px] border border-neutral-200 bg-white p-6 md:order-1">
+                        <section id="order-number" className="order-7 scroll-mt-6 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-5">
                             <h2 className="text-lg font-medium">Ordrenummer</h2>
 
                             <input
@@ -1374,7 +1451,7 @@ export default function AdminOrderDetailPage() {
                         </section>
 
                         {/* 7. Fakturering */}
-                        <section className="order-8 rounded-[24px] border border-neutral-200 bg-white p-6 md:order-6">
+                        <section className="order-8 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-10">
                             <h2 className="text-lg font-medium">Fakturering</h2>
 
                             <div className="mt-4 rounded-[14px] border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm">
@@ -1443,7 +1520,7 @@ export default function AdminOrderDetailPage() {
                         </section>
 
                         {/* 8. Status */}
-                        <section className="order-9 rounded-[24px] border border-neutral-200 bg-white p-6 md:order-7">
+                        <section id="order-status" className="order-9 scroll-mt-6 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-6">
                             <h2 className="text-lg font-medium">Status</h2>
 
                             <select
@@ -1467,7 +1544,7 @@ export default function AdminOrderDetailPage() {
                         </section>
 
                         {/* 9. Oppsummering */}
-                        <section className="order-1 rounded-[24px] border border-neutral-200 bg-white p-6 md:order-4">
+                        <section className="order-1 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-4">
                             <h2 className="text-lg font-medium">Oppsummering</h2>
                             <div className="mt-4 space-y-2 text-sm text-neutral-600">
                                 <div className="flex justify-between gap-4">
@@ -1486,8 +1563,9 @@ export default function AdminOrderDetailPage() {
                         </section>
 
                         {/* 10. Endringsførespurnader */}
+                        <div id="customer-response" className="order-10 scroll-mt-6" aria-hidden="true" />
                         {changeRequests.length ? (
-                            <section className="order-10 rounded-[24px] border border-blue-200 bg-blue-50 p-6 md:order-10">
+                            <section className="order-10 rounded-[20px] border border-blue-200 bg-blue-50 p-5 md:order-7">
                                 <h2 className="text-lg font-medium text-blue-950">Endringsførespurnader</h2>
                                 <p className="mt-3 text-sm leading-6 text-blue-900">
                                     Kunden har sendt ønskje om å legge til varer. Ordren blir ikkje endra automatisk; vurder førespurnaden og gjer eventuelle endringar manuelt før han blir markert som handtert.
@@ -1579,7 +1657,7 @@ export default function AdminOrderDetailPage() {
                         ) : null}
                         {/* 10. Ventar på kundesvar */}
                         {shouldShowManualCustomerDecision ? (
-                            <section className="order-10 rounded-[24px] border border-amber-200 bg-amber-50 p-6 md:order-10">
+                            <section className="order-10 rounded-[20px] border border-amber-200 bg-amber-50 p-5 md:order-7">
                                 <h2 className="text-lg font-medium text-amber-900">
                                     {order.approval.status === "waiting" ? "Ventar på kundesvar" : "Registrer avtale med kunde"}
                                 </h2>
@@ -1641,7 +1719,7 @@ export default function AdminOrderDetailPage() {
                         ) : null}
                         {/* 10. Kundesvar */}
                         {order.approval.status === "answered" ? (
-                            <section className="order-10 rounded-[24px] border border-emerald-200 bg-emerald-50 p-6 md:order-10">
+                            <section className="order-10 rounded-[20px] border border-emerald-200 bg-emerald-50 p-5 md:order-7">
                                 <h2 className="text-lg font-medium text-emerald-900">Kundesvar</h2>
 
                                 <p className="mt-3 text-sm leading-6 text-emerald-800">

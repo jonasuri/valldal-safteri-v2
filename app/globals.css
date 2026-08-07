@@ -1,36 +1,43 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fbfaf7;
+  --foreground: #171714;
+  --paper: #fbfaf7;
+  --ink: #171714;
+  --muted: #62615b;
+  --line: rgba(34, 33, 29, 0.11);
+  --admin-canvas: #f3f1ec;
+  --admin-surface: #fbfaf7;
+  --admin-card: #fffefa;
+  --admin-ink: #20201c;
+  --admin-muted: #65645e;
+  --admin-faint: #929088;
+  --admin-line: rgba(41, 40, 35, 0.11);
+  --admin-line-strong: rgba(41, 40, 35, 0.19);
+  --admin-active: #e8e5dc;
+  --admin-accent: #315c46;
+  --admin-accent-hover: #274c39;
+  --account-canvas: #f5f2ec;
+  --account-surface: #fcfaf6;
+  --account-card: #fffefa;
+  --account-ink: #25231f;
+  --account-muted: #6a665e;
+  --account-line: rgba(57, 51, 43, 0.12);
+  --account-accent: #7b3f36;
+  --account-accent-hover: #65332d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-:root {
-  /* Quiet Scandinavian palette */
-  --paper: #fbfaf7;
-  --ink: #111111;
-  --muted: #5f5f5f;
-  --line: rgba(17, 17, 17, 0.10);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 html,
@@ -40,4 +47,96 @@ body {
 
 ::selection {
   background: rgba(17, 17, 17, 0.12);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a {
+  outline-offset: 3px;
+}
+
+.admin-shell-content > main {
+  min-height: 100vh;
+  background: transparent;
+}
+
+.admin-shell-content :is(input, select, textarea) {
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.admin-shell-content :is(input, select, textarea):focus {
+  border-color: rgba(49, 92, 70, 0.65);
+  box-shadow: 0 0 0 3px rgba(49, 92, 70, 0.10);
+}
+
+.admin-button-secondary {
+  border: 1px solid var(--admin-line-strong);
+  border-radius: 999px;
+  background: white;
+  color: var(--admin-ink);
+  font-weight: 500;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.admin-button-secondary:hover {
+  border-color: rgba(41, 40, 35, 0.32);
+  background: #f8f7f3;
+}
+
+.admin-scrollbar {
+  scrollbar-width: none;
+}
+
+.admin-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.account-shell-content > main {
+  min-height: calc(100vh - 80px);
+  background: transparent;
+}
+
+.account-shell-content :is(input, select, textarea) {
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.account-shell-content :is(input, select, textarea):focus {
+  border-color: rgba(123, 63, 54, 0.58);
+  box-shadow: 0 0 0 3px rgba(123, 63, 54, 0.09);
+}
+
+.account-button-secondary {
+  border: 1px solid var(--account-line);
+  border-radius: 999px;
+  background: white;
+  color: var(--account-ink);
+  font-weight: 500;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.account-button-secondary:hover {
+  border-color: rgba(57, 51, 43, 0.28);
+  background: #f8f5ef;
+}
+
+.account-scrollbar {
+  scrollbar-width: none;
+}
+
+.account-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .admin-shell-content > main > div[class*="mx-auto"] {
+    padding-top: 3rem;
+    padding-bottom: 4rem;
+  }
 }

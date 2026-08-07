@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { db, storage } from "@/lib/firebase";
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
 import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
 
 type ProductDoc = {
     id?: string;
@@ -390,6 +391,7 @@ export default function AdminProductEditPage({
 }: {
     params: { id: string } | Promise<{ id: string }>;
 }) {
+    const { notify, confirmAction } = useSystemFeedback();
     const [productId, setProductId] = useState<string>("");
 
     const [loading, setLoading] = useState(true);
@@ -1258,14 +1260,20 @@ export default function AdminProductEditPage({
     async function handleDeleteProduct() {
         if (!productId || deleting) return;
 
-        const firstConfirm = window.confirm(
-            `Slette produktet "${name || "utan namn"}"? Dette kan ikkje angrast.`
-        );
+        const firstConfirm = await confirmAction({
+            title: "Slett produkt?",
+            message: `Produktet «${name || "utan namn"}» og alle variantane blir sletta.`,
+            confirmLabel: "Gå vidare",
+            destructive: true,
+        });
         if (!firstConfirm) return;
 
-        const secondConfirm = window.confirm(
-            "Er du heilt sikker? Produktet blir sletta frå admin og frå offentlege produktsider. Bilete i Storage blir ikkje automatisk sletta."
-        );
+        const secondConfirm = await confirmAction({
+            title: "Stadfest permanent sletting",
+            message: "Produktet blir sletta frå admin og dei offentlege produktsidene. Bilete blir ikkje automatisk sletta.",
+            confirmLabel: "Slett permanent",
+            destructive: true,
+        });
         if (!secondConfirm) return;
 
         setDeleting(true);
@@ -1500,7 +1508,12 @@ export default function AdminProductEditPage({
                                                 <button
                                                     type="button"
                                                     onClick={async () => {
-                                                        const ok = window.confirm("Fjerne produktbiletet?");
+                                                        const ok = await confirmAction({
+                                                            title: "Fjern produktbilete?",
+                                                            message: "Biletet blir fjerna frå produktet.",
+                                                            confirmLabel: "Fjern bilete",
+                                                            destructive: true,
+                                                        });
                                                         if (!ok) return;
                                                         try {
                                                             try {
@@ -1635,7 +1648,7 @@ export default function AdminProductEditPage({
                                                                                     );
                                                                                 } catch (err) {
                                                                                     console.error("Feil ved opplasting av variantbilete:", err);
-                                                                                    window.alert("Noko gjekk gale under opplastinga av variantbiletet.");
+                                                                                    notify("Noko gjekk gale under opplastinga av variantbiletet.", "error");
                                                                                 } finally {
                                                                                     e.target.value = "";
                                                                                 }
@@ -1647,7 +1660,12 @@ export default function AdminProductEditPage({
                                                                         <button
                                                                             type="button"
                                                                             onClick={async () => {
-                                                                                const ok = window.confirm("Fjerne variantbiletet?");
+                                                                                const ok = await confirmAction({
+                                                                                    title: "Fjern variantbilete?",
+                                                                                    message: "Biletet blir fjerna frå varianten.",
+                                                                                    confirmLabel: "Fjern bilete",
+                                                                                    destructive: true,
+                                                                                });
                                                                                 if (!ok) return;
 
                                                                                 try {
@@ -1696,9 +1714,14 @@ export default function AdminProductEditPage({
 
                                                             <button
                                                                 type="button"
-                                                                onClick={() => {
+                                                                onClick={async () => {
                                                                     if (variants.length === 1) return;
-                                                                    const ok = window.confirm("Slette denne varianten?");
+                                                                    const ok = await confirmAction({
+                                                                        title: "Slett variant?",
+                                                                        message: "Varianten blir fjerna frå produktet.",
+                                                                        confirmLabel: "Slett variant",
+                                                                        destructive: true,
+                                                                    });
                                                                     if (!ok) return;
                                                                     setVariants((prev) => {
                                                                         const next = prev.filter((x) => x.id !== v.id);

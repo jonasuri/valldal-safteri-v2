@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
 
 type PickupLine = {
     productId: string;
@@ -211,6 +212,7 @@ function groupPickupsByDate(pickups: PickupRow[]): PickupDateGroup[] {
 }
 
 export default function AdminPickupsPage() {
+    const { notify } = useSystemFeedback();
     const [pickups, setPickups] = useState<PickupRow[]>([]);
     const [searchText, setSearchText] = useState("");
     const [savingCustomerId, setSavingCustomerId] = useState<string | null>(null);
@@ -308,7 +310,7 @@ export default function AdminPickupsPage() {
             setConfirmInvoiceGroup(null);
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje merke hentingane som fakturerte.");
+            notify("Kunne ikkje merke hentingane som fakturerte.", "error");
         } finally {
             setSavingCustomerId(null);
         }

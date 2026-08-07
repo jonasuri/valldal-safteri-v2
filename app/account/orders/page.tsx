@@ -207,26 +207,24 @@ export default function AccountOrdersPage() {
     );
 
     return (
-        <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
-            <div className="mx-auto max-w-5xl px-4 py-10 md:px-6">
-                <Link
-                    href="/account"
-                    className="text-sm text-neutral-600 underline-offset-4 hover:underline"
-                >
-                    ← Tilbake til mi side
-                </Link>
-
-                <div className="mt-6 rounded-[24px] border border-rose-100 bg-[#fffafa] p-6">
-                    <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">
-                        Mi side
+        <main className="min-h-screen text-[color:var(--account-ink)]">
+            <div className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-14">
+                <header className="flex flex-col gap-5 border-b border-[color:var(--account-line)] pb-8 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--account-muted)]">
+                        Kundekonto
                     </p>
-                    <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+                    <h1 className="mt-2 text-3xl tracking-tight md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>
                         Mine bestillingar
                     </h1>
-                    <p className="mt-3 max-w-2xl text-sm leading-7 text-neutral-600">
-                        Her finn de aktive bestillingar og tidlegare ordre. Detaljar og eventuelle val finn de inne på kvar enkelt bestilling.
+                    <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--account-muted)]">
+                        Aktive bestillingar ligg øvst. Dersom vi treng eit svar, blir det tydeleg markert her.
                     </p>
-                </div>
+                    </div>
+                    <Link href="/account/order" className="inline-flex items-center justify-center rounded-full bg-[color:var(--account-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--account-accent-hover)]">
+                        Ny bestilling
+                    </Link>
+                </header>
 
                 {loading ? (
                     <p className="mt-6 text-sm text-neutral-500">Hentar bestillingar …</p>
@@ -239,21 +237,15 @@ export default function AccountOrdersPage() {
                         {error}
                     </div>
                 ) : (
-                    <div className="mt-8 space-y-10">
+                    <div className="mt-8 space-y-12">
                         <section>
                             <div className="flex items-end justify-between gap-4">
                                 <div>
-                                    <h2 className="text-xl font-medium">Aktive bestillingar</h2>
-                                    <p className="mt-1 text-sm text-neutral-500">
+                                    <h2 className="text-xl font-semibold tracking-tight">Aktive bestillingar</h2>
+                                    <p className="mt-1 text-sm text-[color:var(--account-muted)]">
                                         Bestillingar som er nye, under behandling, pakka eller ventar på svar.
                                     </p>
                                 </div>
-                                <Link
-                                    href="/account/order"
-                                    className="hidden rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-900 transition hover:bg-rose-100 md:inline-flex"
-                                >
-                                    Ny bestilling
-                                </Link>
                             </div>
 
                             <div className="mt-4 space-y-3">
@@ -270,8 +262,8 @@ export default function AccountOrdersPage() {
                         </section>
 
                         <section>
-                            <h2 className="text-xl font-medium">Tidlegare bestillingar</h2>
-                            <p className="mt-1 text-sm text-neutral-500">
+                            <h2 className="text-xl font-semibold tracking-tight">Tidlegare bestillingar</h2>
+                            <p className="mt-1 text-sm text-[color:var(--account-muted)]">
                                 Ferdige, henta, sende eller kansellerte ordre.
                             </p>
 
@@ -300,13 +292,13 @@ function OrderCard({ order, muted = false }: { order: CustomerOrder; muted?: boo
 
     return (
         <div
-            className={`rounded-[18px] border p-5 ${needsAction
+            className={`rounded-[20px] border p-5 transition md:p-6 ${needsAction
                 ? "border-amber-300 bg-amber-50"
                 : isCancelled
                     ? "border-neutral-300 bg-neutral-100"
                     : muted
-                        ? "border-neutral-200 bg-white/70"
-                        : "border-rose-100 bg-white"
+                        ? "border-[color:var(--account-line)] bg-white/55"
+                        : "border-[color:var(--account-line)] bg-[color:var(--account-card)]"
                 }`}
         >
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -319,7 +311,7 @@ function OrderCard({ order, muted = false }: { order: CustomerOrder; muted?: boo
                             Restordre
                         </div>
                     ) : null}
-                    <h3 className="mt-2 text-lg font-medium text-neutral-900">
+                    <h3 className="mt-2 text-xl tracking-tight text-neutral-900" style={{ fontFamily: "var(--font-serif)" }}>
                         {order.orderNumber || "Ordrenummer kjem"}
                     </h3>
                     {order.isBackorder && order.parentOrderNumber ? (
@@ -350,10 +342,10 @@ function OrderCard({ order, muted = false }: { order: CustomerOrder; muted?: boo
                         href={`/account/orders/${order.id}`}
                         className={
                             needsAction
-                                ? "rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-900 transition hover:bg-rose-100"
+                                ? "rounded-full bg-amber-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-amber-800"
                                 : isCancelled
                                     ? "rounded-full border border-neutral-300 bg-white/70 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-white"
-                                    : "rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                                    : "account-button-secondary px-4 py-2 text-sm"
                         }
                     >
                         {needsAction ? "Sjå og svar" : "Sjå ordre"}

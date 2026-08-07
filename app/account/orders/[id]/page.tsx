@@ -11,6 +11,7 @@ import { auth, db } from "@/lib/firebase";
 import { notifyInternalOrder } from "@/lib/internalOrderNotifications";
 import { submitCustomerOrderApproval } from "@/lib/customerOrderApproval";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
 
 type AccountCustomer = {
     id: string;
@@ -260,6 +261,7 @@ async function fetchCustomerForUser(user: User): Promise<AccountCustomer | null>
 }
 
 export default function AccountOrderDetailPage() {
+    const { notify } = useSystemFeedback();
     const params = useParams();
     const orderId = typeof params.id === "string" ? params.id : "";
     const searchParams = useSearchParams();
@@ -374,7 +376,7 @@ export default function AccountOrderDetailPage() {
             });
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje lagre svaret.");
+            notify("Kunne ikkje lagre svaret.", "error");
         } finally {
             setSavingApproval(false);
         }
@@ -386,12 +388,12 @@ export default function AccountOrderDetailPage() {
         const message = changeRequestMessage.trim();
 
         if (!message) {
-            window.alert("Skriv kva de ønskjer å legge til bestillinga.");
+            notify("Skriv kva de ønskjer å leggje til bestillinga.", "error");
             return;
         }
 
         if (!canRequestOrderChange(order)) {
-            window.alert("Denne bestillinga er alt for langt i behandling til at de kan sende endringsønske her.");
+            notify("Denne bestillinga er komen for langt i behandling til at de kan sende endringsønske her.", "error");
             return;
         }
 
@@ -423,7 +425,7 @@ export default function AccountOrderDetailPage() {
             setChangeRequestSuccess("Førespurnaden er sendt. Vi vurderer han før bestillinga eventuelt blir endra.");
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje sende førespurnaden. Prøv igjen.");
+            notify("Kunne ikkje sende førespurnaden. Prøv igjen.", "error");
         } finally {
             setSubmittingChangeRequest(false);
         }
@@ -451,7 +453,7 @@ export default function AccountOrderDetailPage() {
 
     if (loading) {
         return (
-            <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
+            <main className="min-h-screen text-[color:var(--account-ink)]">
                 <div className="mx-auto max-w-5xl px-4 py-10 text-sm text-neutral-600 md:px-6">
                     Hentar bestilling …
                 </div>
@@ -461,7 +463,7 @@ export default function AccountOrderDetailPage() {
 
     if (error || !order) {
         return (
-            <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
+            <main className="min-h-screen text-[color:var(--account-ink)]">
                 <div className="mx-auto max-w-5xl px-4 py-10 md:px-6">
                     <Link
                         href={cameFromAccount ? "/account" : "/account/orders"}
@@ -479,17 +481,17 @@ export default function AccountOrderDetailPage() {
     }
 
     return (
-        <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
-            <div className="mx-auto max-w-5xl px-4 py-10 md:px-6">
+        <main className="min-h-screen text-[color:var(--account-ink)]">
+            <div className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-14">
                 <Link
                     href={cameFromAccount ? "/account" : "/account/orders"}
-                    className="text-sm text-neutral-600 underline-offset-4 hover:underline"
+                    className="text-xs font-medium text-[color:var(--account-muted)] underline-offset-4 hover:text-[color:var(--account-ink)] hover:underline"
                 >
                     ← {cameFromAccount ? "Tilbake til Min side" : "Tilbake til bestillingar"}
                 </Link>
 
-                <div className="mt-6 rounded-[24px] border border-rose-100 bg-[#fffafa] p-6">
-                    <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">
+                <header className="mt-6 rounded-[22px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-6 md:p-7">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--account-muted)]">
                         Bestilling
                     </p>
                     {order.isBackorder ? (
@@ -498,7 +500,7 @@ export default function AccountOrderDetailPage() {
                         </div>
                     ) : null}
 
-                    <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+                    <h1 className="mt-2 text-3xl tracking-tight md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>
                         {order.orderNumber || "Ordrenummer kjem"}
                     </h1>
 
@@ -522,7 +524,7 @@ export default function AccountOrderDetailPage() {
                             Bestillinga er motteken. Ordrenummer blir tildelt når ho er registrert i ordresystemet vårt.
                         </p>
                     ) : null}
-                </div>
+                </header>
 
                 {order.status === "cancelled" ? (
                     <section className="mt-6 rounded-[24px] border border-neutral-300 bg-neutral-100 p-6 text-neutral-800">
@@ -534,8 +536,8 @@ export default function AccountOrderDetailPage() {
                 ) : null}
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
-                    <section className={`rounded-[24px] border border-neutral-200 bg-white p-6 ${onlyShowMissingLinesOnMobile ? "hidden md:block" : ""}`}>
-                        <h2 className="text-lg font-medium">Ordrelinjer</h2>
+                    <section className={`rounded-[22px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-5 md:p-6 ${onlyShowMissingLinesOnMobile ? "hidden md:block" : ""}`}>
+                        <h2 className="text-lg font-semibold tracking-tight">Varer i bestillinga</h2>
 
                         <div className="mt-5 space-y-8">
                             {([
@@ -612,9 +614,9 @@ export default function AccountOrderDetailPage() {
                         </div>
                     </section>
 
-                    <aside className="space-y-6">
+                    <aside className="flex flex-col gap-5">
                         {order.isBackorder ? (
-                            <section className="rounded-[24px] border border-rose-100 bg-[#fffafa] p-6">
+                            <section className="order-2 rounded-[20px] border border-rose-100 bg-[#fffafa] p-5">
                                 <h2 className="text-lg font-medium text-rose-900">Restordre</h2>
                                 <p className="mt-3 text-sm leading-6 text-neutral-600">
                                     Denne bestillinga inneheld varer som stod att frå ei tidlegare bestilling.
@@ -626,8 +628,8 @@ export default function AccountOrderDetailPage() {
                                 ) : null}
                             </section>
                         ) : null}
-                        <section className="rounded-[24px] border border-neutral-200 bg-white p-6">
-                            <h2 className="text-lg font-medium">Status</h2>
+                        <section className="order-2 rounded-[20px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-5">
+                            <h2 className="text-lg font-semibold tracking-tight">Status</h2>
 
                             <div className={`mt-4 rounded-full border px-3 py-2 text-sm font-medium ${orderStatusStyles(order.status)}`}>
                                 {orderStatusLabel(order.status)}
@@ -639,8 +641,8 @@ export default function AccountOrderDetailPage() {
                         </section>
 
                         {canRequestOrderChange(order) ? (
-                            <section className="rounded-[24px] border border-neutral-200 bg-white p-6">
-                                <h2 className="text-lg font-medium">Legg til varer</h2>
+                            <section className="order-4 rounded-[20px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-5">
+                                <h2 className="text-lg font-semibold tracking-tight">Legg til varer</h2>
                                 <p className="mt-3 text-sm leading-6 text-neutral-600">
                                     Treng de å legge til noko på bestillinga, kan de sende ein førespurnad her. Ordren blir ikkje endra før vi har kontrollert og godkjent endringa.
                                 </p>
@@ -683,8 +685,8 @@ export default function AccountOrderDetailPage() {
                         ) : null}
 
                         {changeRequests.length ? (
-                            <section className="rounded-[24px] border border-neutral-200 bg-white p-6">
-                                <h2 className="text-lg font-medium">Endringsførespurnader</h2>
+                            <section className="order-5 rounded-[20px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-5">
+                                <h2 className="text-lg font-semibold tracking-tight">Endringsførespurnader</h2>
                                 <div className="mt-4 space-y-3">
                                     {changeRequests.map((request) => (
                                         <div key={request.id} className="rounded-[16px] border border-neutral-200 bg-neutral-50 p-4 text-sm">
@@ -724,8 +726,8 @@ export default function AccountOrderDetailPage() {
                             </section>
                         ) : null}
 
-                        <section className="rounded-[24px] border border-neutral-200 bg-white p-6">
-                            <h2 className="text-lg font-medium">Oppsummering</h2>
+                        <section className="order-3 rounded-[20px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-5">
+                            <h2 className="text-lg font-semibold tracking-tight">Oppsummering</h2>
 
                             <div className="mt-4 space-y-2 text-sm text-neutral-600">
                                 <div className="flex justify-between gap-4">
@@ -743,13 +745,13 @@ export default function AccountOrderDetailPage() {
                             </div>
                         </section>
 
-                        <section className="rounded-[24px] border border-neutral-200 bg-white p-6">
-                            <h2 className="text-lg font-medium">Dokument</h2>
+                        <section className="order-6 rounded-[20px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-5">
+                            <h2 className="text-lg font-semibold tracking-tight">Dokument</h2>
 
                             <div className="mt-4 space-y-3">
                                 <Link
                                     href={`/account/orders/${order.id}/confirmation`}
-                                    className="flex w-full items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-900 transition hover:bg-rose-100"
+                                    className="flex w-full items-center justify-center rounded-full bg-[color:var(--account-accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--account-accent-hover)]"
                                 >
                                     Sjå ordrebekreftelse
                                 </Link>
@@ -770,9 +772,10 @@ export default function AccountOrderDetailPage() {
                         </section>
 
                         {order.status === "change_requested" && order.approval.status !== "answered" ? (
-                            <section className="rounded-[24px] border border-amber-200 bg-amber-50 p-6">
-                                <h2 className="text-lg font-medium text-amber-900">
-                                    Handling krevst
+                            <section id="customer-action" className="order-1 scroll-mt-6 rounded-[20px] border border-amber-200 bg-amber-50 p-5">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">Svar nødvendig</p>
+                                <h2 className="mt-2 text-xl font-semibold tracking-tight text-amber-950">
+                                    Korleis skal vi handtere resten?
                                 </h2>
 
                                 <p className="mt-3 text-sm leading-6 text-amber-800">
@@ -851,7 +854,7 @@ export default function AccountOrderDetailPage() {
                             </section>
                         ) : null}
                         {order.approval.status === "answered" ? (
-                            <section className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-6">
+                            <section className="order-1 rounded-[20px] border border-emerald-200 bg-emerald-50 p-5">
                                 <h2 className="text-lg font-medium text-emerald-900">
                                     Svaret er registrert
                                 </h2>

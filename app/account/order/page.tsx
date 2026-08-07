@@ -21,7 +21,8 @@ import {
 import { createOrder } from "@/lib/ordersFirestore";
 import { notifyInternalOrder } from "@/lib/internalOrderNotifications";
 import { sendAutomaticOrderConfirmation } from "@/lib/customerEmailActions";
-import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
+import { groupOrderLinesByBrand, sortVariantsBySize } from "@/lib/orderLineSorting";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
 
 type ViewMode = "liste" | "oppdag";
 type BrandFilter = "alle" | B2BProductBrand;
@@ -293,6 +294,7 @@ function storeQuantities(quantities: Record<string, number>) {
 }
 
 export default function AccountOrderPage() {
+    const { notify } = useSystemFeedback();
     const router = useRouter();
     const [viewMode, setViewMode] = useState<ViewMode>("liste");
     const [isOrderOpen, setIsOrderOpen] = useState(false);
@@ -515,7 +517,7 @@ export default function AccountOrderPage() {
             router.push(`/account/orders/${orderId}?from=account`);
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje sende bestillinga. Prøv igjen.");
+            notify("Kunne ikkje sende bestillinga. Prøv igjen.", "error");
         } finally {
             setSubmittingOrder(false);
         }
@@ -590,44 +592,37 @@ export default function AccountOrderPage() {
     }
 
     return (
-        <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
-            <div className="mx-auto max-w-7xl px-6 py-12">
-                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <main className="min-h-screen text-[color:var(--account-ink)]">
+            <div className="mx-auto max-w-7xl px-5 py-10 md:px-8 md:py-14 xl:mr-[390px] xl:max-w-none xl:px-10">
+                <header className="flex flex-col gap-5 border-b border-[color:var(--account-line)] pb-8 md:flex-row md:items-end md:justify-between">
                     <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--account-muted)]">
                             B2B-bestilling · {customer.displayName || customer.companyName} · {customerTypeLabel(customer.customerType)}
                         </p>
-                        <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
+                        <h1 className="mt-2 text-3xl tracking-tight md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>
                             Ny bestilling
                         </h1>
-                        <p className="mt-4 max-w-2xl text-sm leading-7 text-neutral-600">
+                        <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--account-muted)]">
                             Legg til produkt frå både Valldal Safteri og Valldal Bryggeri i same bestilling.
                         </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                        <Link
-                            href="/account"
-                            className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
-                        >
-                            ← Min side
-                        </Link>
-
                         <button
                             type="button"
                             onClick={() => setIsOrderOpen(true)}
-                            className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
+                            className="rounded-full bg-[color:var(--account-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--account-accent-hover)] xl:hidden"
                         >
                             Bestilling ({orderLineCount})
                         </button>
 
-                        <div className="inline-flex rounded-full border border-neutral-200 bg-white p-1">
+                        <div className="inline-flex rounded-full border border-[color:var(--account-line)] bg-white p-1">
                             <button
                                 type="button"
                                 onClick={() => setViewMode("liste")}
                                 className={
                                     "rounded-full px-4 py-2 text-sm transition " +
-                                    (viewMode === "liste" ? "bg-neutral-900 text-white" : "text-neutral-600")
+                                    (viewMode === "liste" ? "bg-[color:var(--account-ink)] text-white" : "text-[color:var(--account-muted)]")
                                 }
                             >
                                 Liste
@@ -637,22 +632,22 @@ export default function AccountOrderPage() {
                                 onClick={() => setViewMode("oppdag")}
                                 className={
                                     "rounded-full px-4 py-2 text-sm transition " +
-                                    (viewMode === "oppdag" ? "bg-neutral-900 text-white" : "text-neutral-600")
+                                    (viewMode === "oppdag" ? "bg-[color:var(--account-ink)] text-white" : "text-[color:var(--account-muted)]")
                                 }
                             >
                                 Oppdag
                             </button>
                         </div>
                     </div>
-                </div>
+                </header>
 
-                <div className="mt-8 rounded-[24px] border border-neutral-200 bg-white p-5">
+                <div className="mt-7 rounded-[20px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-4 md:p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <input
                             type="search"
                             value={queryText}
                             onChange={(e) => setQueryText(e.target.value)}
-                            className="w-full rounded-[14px] border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-neutral-800 lg:max-w-md"
+                            className="w-full rounded-full border border-[color:var(--account-line)] bg-white px-4 py-2.5 text-sm outline-none lg:max-w-md"
                             placeholder="Søk etter produkt, kategori, variant eller SKU"
                         />
 
@@ -669,8 +664,8 @@ export default function AccountOrderPage() {
                                     className={
                                         "rounded-full border px-3 py-1.5 text-xs transition " +
                                         (brandFilter === key
-                                            ? "border-neutral-900 bg-neutral-900 text-white"
-                                            : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50")
+                                            ? "border-[color:var(--account-ink)] bg-[color:var(--account-ink)] text-white"
+                                            : "border-[color:var(--account-line)] bg-white text-[color:var(--account-muted)] hover:bg-neutral-50")
                                     }
                                 >
                                     {label}
@@ -707,7 +702,7 @@ export default function AccountOrderPage() {
                                                         </td>
                                                     </tr>
 
-                                                    {product.variants.map((variant) => {
+                                                    {sortVariantsBySize(product.variants).map((variant) => {
                                                         const price = getB2BVariantPrice(variant, customer.customerType);
                                                         const hasPrice = hasB2BVariantPrice(variant, customer.customerType);
                                                         const key = getLineKey(product.id, variant.id);
@@ -788,7 +783,7 @@ export default function AccountOrderPage() {
                                             </div>
 
                                             <div className="divide-y divide-neutral-100">
-                                                {product.variants.map((variant) => {
+                                                {sortVariantsBySize(product.variants).map((variant) => {
                                                     const price = getB2BVariantPrice(variant, customer.customerType);
                                                     const hasPrice = hasB2BVariantPrice(variant, customer.customerType);
                                                     const key = getLineKey(product.id, variant.id);
@@ -885,7 +880,7 @@ export default function AccountOrderPage() {
                                                 <p className="mt-2 text-sm leading-6 text-neutral-600">{product.shortDescription}</p>
                                             ) : null}
                                             <div className="mt-4 space-y-3">
-                                                {product.variants.map((variant) => {
+                                                {sortVariantsBySize(product.variants).map((variant) => {
                                                     const price = getB2BVariantPrice(variant, customer.customerType);
                                                     const hasPrice = hasB2BVariantPrice(variant, customer.customerType);
                                                     const key = getLineKey(product.id, variant.id);
@@ -958,20 +953,19 @@ export default function AccountOrderPage() {
                 </div>
             </div>
 
-            {isOrderOpen ? (
-                <div className="fixed inset-0 z-50">
+            <div className={`${isOrderOpen ? "fixed inset-0 z-50" : "hidden"} xl:fixed xl:bottom-0 xl:left-auto xl:right-0 xl:top-[113px] xl:z-20 xl:block xl:w-[390px]`}>
                     <button
                         type="button"
                         aria-label="Lukk bestilling"
                         onClick={() => setIsOrderOpen(false)}
-                        className="absolute inset-0 bg-black/25"
+                        className="absolute inset-0 bg-black/25 xl:hidden"
                     />
-                    <aside className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-[#f7f5f1] shadow-2xl">
-                        <div className="border-b border-neutral-200 bg-white px-6 py-5">
+                    <aside className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-[color:var(--account-canvas)] shadow-2xl xl:relative xl:h-full xl:max-w-none xl:border-l xl:border-[color:var(--account-line)] xl:shadow-none">
+                        <div className="border-b border-[color:var(--account-line)] bg-[color:var(--account-surface)] px-6 py-5">
                             <div className="flex items-start justify-between gap-4">
                                 <div>
                                     <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Bestilling</p>
-                                    <h2 className="mt-1 text-2xl font-semibold tracking-tight">
+                                    <h2 className="mt-1 text-2xl tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>
                                         {customer.displayName || customer.companyName}
                                     </h2>
                                     <p className="mt-1 text-sm text-neutral-500">
@@ -981,7 +975,7 @@ export default function AccountOrderPage() {
                                 <button
                                     type="button"
                                     onClick={() => setIsOrderOpen(false)}
-                                    className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm transition hover:bg-neutral-50"
+                                    className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm transition hover:bg-neutral-50 xl:hidden"
                                 >
                                     Lukk
                                 </button>
@@ -1092,7 +1086,7 @@ export default function AccountOrderPage() {
                             )}
                         </div>
 
-                        <div className="border-t border-neutral-200 bg-white px-6 py-5">
+                        <div className="border-t border-[color:var(--account-line)] bg-[color:var(--account-surface)] px-6 py-5">
                             <div className="mb-4 flex items-center justify-between text-sm">
                                 <span className="text-neutral-600">Sum</span>
                                 <span className="font-medium text-neutral-900">{formatB2BPriceExVat(orderSubtotal)}</span>
@@ -1101,7 +1095,7 @@ export default function AccountOrderPage() {
                                 type="button"
                                 onClick={submitOrder}
                                 disabled={!orderLines.length || submittingOrder}
-                                className="w-full rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+                                className="w-full rounded-full bg-[color:var(--account-accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--account-accent-hover)] disabled:opacity-50"
                             >
                                 {submittingOrder ? "Sender …" : "Send bestilling"}
                             </button>
@@ -1119,8 +1113,7 @@ export default function AccountOrderPage() {
                             </p>
                         </div>
                     </aside>
-                </div>
-            ) : null}
+            </div>
         </main>
     );
 }

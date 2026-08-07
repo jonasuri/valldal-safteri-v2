@@ -7,6 +7,7 @@ import { doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore"
 import { auth, db } from "@/lib/firebase";
 import { completeOrderPacking } from "@/lib/completeOrderPacking";
 import { groupOrderLinesByBrand, sortOrderLines } from "@/lib/orderLineSorting";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
 
 type OrderLine = {
     productId: string;
@@ -74,6 +75,7 @@ function getLineKey(line: OrderLine) {
 
 
 export default function OrderPickPage() {
+    const { notify } = useSystemFeedback();
     const params = useParams();
     const router = useRouter();
     const orderId = typeof params.id === "string" ? params.id : "";
@@ -156,7 +158,7 @@ export default function OrderPickPage() {
             setHasChanges(false);
         } catch (error) {
             console.error(error);
-            window.alert("Kunne ikkje lagre plukklista.");
+            notify("Kunne ikkje lagre plukklista.", "error");
         } finally {
             setSavingPacking(false);
         }
@@ -179,11 +181,11 @@ export default function OrderPickPage() {
             router.push(`/admin/orders/${orderId}`);
         } catch (error) {
             console.error(error);
-            window.alert(
+            notify(
                 error instanceof Error
                     ? error.message
                     : "Kunne ikkje fullføre pakkinga."
-            );
+            , "error");
         } finally {
             setSavingPacking(false);
         }
@@ -206,6 +208,17 @@ export default function OrderPickPage() {
     function numericPackedQuantity(line: OrderLine) {
         const value = packed[getLineKey(line)];
         return typeof value === "number" ? value : 0;
+    }
+
+    function setPackedQuantity(line: OrderLine, quantity: number | "") {
+        const key = getLineKey(line);
+        const nextQuantity = quantity === ""
+            ? ""
+            : Math.min(line.quantity, Math.max(0, Math.floor(quantity)));
+
+        setPacked((current) => ({ ...current, [key]: nextQuantity }));
+        setFullyPacked((current) => ({ ...current, [key]: nextQuantity === line.quantity }));
+        setHasChanges(true);
     }
 
     if (loading) {
@@ -264,21 +277,21 @@ export default function OrderPickPage() {
     const groupedLines = groupOrderLinesByBrand(sortedLines);
 
     return (
-        <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
-            <div className="mx-auto max-w-5xl px-6 py-10">
+        <main className="min-h-screen text-[color:var(--admin-ink)]">
+            <div className="mx-auto max-w-5xl px-5 pb-36 pt-7 md:px-8 md:pb-36 md:pt-10">
                 <Link
                     href={`/admin/orders/${order.id}`}
-                    className="text-sm text-neutral-600 underline-offset-4 hover:underline"
+                    className="text-xs font-medium text-[color:var(--admin-muted)] underline-offset-4 hover:text-[color:var(--admin-ink)] hover:underline"
                 >
                     ← Tilbake til ordre
                 </Link>
 
-                <div className="mt-6 rounded-[24px] border border-neutral-200 bg-white p-6">
-                    <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">
+                <header className="mt-5 rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:p-7">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">
                         Plukkliste
                     </p>
 
-                    <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+                    <h1 className="mt-2 text-3xl tracking-tight md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>
                         {order.orderNumber || order.id.slice(0, 8).toUpperCase()}
                     </h1>
 
@@ -291,7 +304,7 @@ export default function OrderPickPage() {
                             </>
                         ) : null}
                         <span>•</span>
-                        <span>{completedLineCount} av {order.lines.length} linjer registrerte</span>
+                        <span>{completedLineCount} av {order.lines.length} varelinjer registrerte</span>
                         <span
                             className={`rounded-full px-3 py-1 text-xs font-medium ${packingResultStatus === "Delpakka"
                                 ? "bg-amber-100 text-amber-800"
@@ -303,9 +316,15 @@ export default function OrderPickPage() {
                             {packingResultStatus}
                         </span>
                     </div>
-                </div>
+                    <div className="mt-5 h-2 overflow-hidden rounded-full bg-neutral-100">
+                        <div
+                            className="h-full rounded-full bg-[color:var(--admin-accent)] transition-all"
+                            style={{ width: `${order.lines.length ? (completedLineCount / order.lines.length) * 100 : 0}%` }}
+                        />
+                    </div>
+                </header>
 
-                <div className="mt-6 rounded-[24px] border border-neutral-200 bg-white p-5">
+                <section className="mt-5 rounded-[18px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5">
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className="font-medium">Automatisk ordrestatus</h2>
@@ -314,7 +333,7 @@ export default function OrderPickPage() {
                             </p>
                         </div>
 
-                        <div className="text-right">
+                        <div className="shrink-0 text-right">
                             <div className="text-xs uppercase tracking-[0.12em] text-neutral-500">
                                 Ny status
                             </div>
@@ -323,34 +342,10 @@ export default function OrderPickPage() {
                             </div>
                         </div>
                     </div>
-                    <div className="mt-5 flex flex-col gap-3 border-t border-neutral-200 pt-5 md:flex-row md:items-center md:justify-between">
-                        <p className="text-sm text-neutral-500">
-                            Pakking blir lagra automatisk. Lageret blir justert når du fullfører pakkinga.
-                        </p>
-
-                        <div className="flex items-center gap-3">
-                            <div className="text-sm text-neutral-500">
-                                {savingPacking
-                                    ? "Lagrar …"
-                                    : hasChanges
-                                        ? "Ventar på lagring …"
-                                        : "Alle endringar lagra"}
-                            </div>
-                            <button
-                                type="button"
-                                onClick={completePacking}
-                                disabled={!canCompletePacking || savingPacking}
-                                className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                                {savingPacking
-                                    ? "Fullfører …"
-                                    : order.packingInventoryRevision > 0
-                                        ? "Oppdater pakking og lager"
-                                        : "Fullfør pakking"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                    <p className="mt-4 border-t border-[color:var(--admin-line)] pt-4 text-sm leading-6 text-[color:var(--admin-muted)]">
+                        Mengdene blir lagra automatisk. Lageret blir først justert når du fullfører pakkinga nedst på skjermen.
+                    </p>
+                </section>
 
                 <div className="mt-6 space-y-8">
                     {([
@@ -376,7 +371,13 @@ export default function OrderPickPage() {
                                     return (
                                         <div
                                             key={key}
-                                            className="rounded-[24px] border border-neutral-200 bg-white p-6"
+                                            className={`rounded-[20px] border p-5 transition md:p-6 ${
+                                                packedQty !== ""
+                                                    ? missingQty > 0
+                                                        ? "border-amber-200 bg-amber-50/55"
+                                                        : "border-emerald-200 bg-emerald-50/40"
+                                                    : "border-[color:var(--admin-line)] bg-[color:var(--admin-card)]"
+                                            }`}
                                         >
                                             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                                 <div>
@@ -392,23 +393,14 @@ export default function OrderPickPage() {
                                                     </p>
                                                 </div>
 
-                                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm transition hover:bg-neutral-50">
+                                                <label className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${isFullyPacked ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-[color:var(--admin-line-strong)] bg-white hover:bg-neutral-50"}`}>
                                                     <input
                                                         type="checkbox"
                                                         checked={isFullyPacked}
                                                         onChange={(e) => {
                                                             const checked = e.target.checked;
 
-                                                            setFullyPacked((prev) => ({
-                                                                ...prev,
-                                                                [key]: checked,
-                                                            }));
-
-                                                            setPacked((prev) => ({
-                                                                ...prev,
-                                                                [key]: checked ? line.quantity : "",
-                                                            }));
-                                                            setHasChanges(true);
+                                                            setPackedQuantity(line, checked ? line.quantity : "");
                                                         }}
                                                         className="h-4 w-4 rounded border-neutral-300"
                                                     />
@@ -421,7 +413,7 @@ export default function OrderPickPage() {
                                                     <div className="text-xs uppercase tracking-[0.12em] text-neutral-500">
                                                         Bestilt
                                                     </div>
-                                                    <div className="mt-1 text-xl font-medium">
+                                                    <div className="mt-2 text-3xl font-semibold">
                                                         {line.quantity}
                                                     </div>
                                                 </div>
@@ -430,30 +422,20 @@ export default function OrderPickPage() {
                                                     <div className="text-xs uppercase tracking-[0.12em] text-neutral-500">
                                                         Pakka
                                                     </div>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        value={packedQty}
-                                                        placeholder="—"
-                                                        onChange={(e) => {
-                                                            const value = e.target.value;
-                                                            const nextValue = value === ""
-                                                                ? ""
-                                                                : Math.min(line.quantity, Math.max(0, Math.floor(Number(value) || 0)));
-
-                                                            setPacked((prev) => ({
-                                                                ...prev,
-                                                                [key]: nextValue,
-                                                            }));
-
-                                                            setFullyPacked((prev) => ({
-                                                                ...prev,
-                                                                [key]: nextValue === line.quantity,
-                                                            }));
-                                                            setHasChanges(true);
-                                                        }}
-                                                        className="mt-1 w-24 rounded-[12px] border border-neutral-200 px-3 py-2 outline-none [appearance:textfield] focus:border-neutral-800 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                                    />
+                                                    <div className="mt-2 inline-flex items-center overflow-hidden rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white">
+                                                        <button type="button" onClick={() => setPackedQuantity(line, Math.max(0, numericPackedQuantity(line) - 1))} className="h-11 w-11 text-lg text-neutral-600 hover:bg-neutral-50" aria-label={`Trekk frå éin ${line.productName}`}>−</button>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max={line.quantity}
+                                                            inputMode="numeric"
+                                                            value={packedQty}
+                                                            placeholder="—"
+                                                            onChange={(e) => setPackedQuantity(line, e.target.value === "" ? "" : Number(e.target.value))}
+                                                            className="h-11 w-16 border-x border-[color:var(--admin-line)] px-2 text-center text-lg font-semibold outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                        />
+                                                        <button type="button" onClick={() => setPackedQuantity(line, numericPackedQuantity(line) + 1)} className="h-11 w-11 text-lg text-neutral-600 hover:bg-neutral-50" aria-label={`Legg til éin ${line.productName}`}>+</button>
+                                                    </div>
                                                 </div>
 
                                                 <div>
@@ -461,7 +443,7 @@ export default function OrderPickPage() {
                                                         Manglar
                                                     </div>
                                                     <div className={
-                                                        "mt-1 text-xl font-medium " +
+                                                        "mt-2 text-3xl font-semibold " +
                                                         (missingQty > 0 ? "text-amber-700" : "text-neutral-400")
                                                     }>
                                                         {packedQty === "" ? "—" : missingQty}
@@ -474,6 +456,30 @@ export default function OrderPickPage() {
                             </section>
                         );
                     })}
+                </div>
+            </div>
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[color:var(--admin-line)] bg-[color:var(--admin-surface)]/96 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur md:left-60 md:px-8">
+                <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="text-sm font-medium">
+                            {completedLineCount} av {order.lines.length} varelinjer registrerte
+                        </p>
+                        <p className="mt-0.5 text-xs text-[color:var(--admin-muted)]">
+                            {savingPacking ? "Lagrar endringar …" : hasChanges ? "Ventar på automatisk lagring …" : "Alle endringar er lagra"}
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={completePacking}
+                        disabled={!canCompletePacking || savingPacking}
+                        className="rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        {savingPacking
+                            ? "Fullfører …"
+                            : order.packingInventoryRevision > 0
+                                ? "Oppdater pakking og lager"
+                                : "Fullfør pakking og trekk lager"}
+                    </button>
                 </div>
             </div>
         </main>

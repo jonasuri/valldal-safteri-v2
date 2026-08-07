@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
 
 // Types for comparison response
 type DifferenceType =
@@ -212,6 +213,7 @@ function DifferenceTable({
 }
 
 export default function ZettleIntegrationPage() {
+    const { confirmAction } = useSystemFeedback();
     const [comparison, setComparison] = useState<Comparison | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -344,9 +346,11 @@ export default function ZettleIntegrationPage() {
         const skus = pricePreview?.updates.map((update) => update.sku) ?? [];
         if (skus.length === 0) return;
 
-        const confirmed = window.confirm(
-            `Vil du oppdatere ${skus.length} pris${skus.length === 1 ? "" : "ar"} i Zettle?`
-        );
+        const confirmed = await confirmAction({
+            title: "Oppdater prisar i Zettle?",
+            message: `${skus.length} pris${skus.length === 1 ? "" : "ar"} blir oppdatert.`,
+            confirmLabel: "Oppdater prisar",
+        });
         if (!confirmed) return;
 
         setUpdateLoading(true);
@@ -415,9 +419,11 @@ export default function ZettleIntegrationPage() {
 
         const { sku, name } = variantPreview.variantToAdd;
         const targetProduct = variantPreview.zettleProduct?.name ?? "Zettle-produktet";
-        const confirmed = window.confirm(
-            `Vil du leggje varianten ${name} (SKU ${sku}) til ${targetProduct}?`
-        );
+        const confirmed = await confirmAction({
+            title: "Legg variant til i Zettle?",
+            message: `${name} (SKU ${sku}) blir lagd til i ${targetProduct}.`,
+            confirmLabel: "Legg til variant",
+        });
         if (!confirmed) return;
 
         setVariantUpdateLoading(true);

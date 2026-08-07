@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
+import { sortOrderLines } from "@/lib/orderLineSorting";
 import PackingSlipDocument from "@/app/components/orders/PackingSlipDocument";
 
 type OrderLine = {
@@ -59,34 +60,8 @@ function getLineKey(line: { productId: string; variantId: string }) {
     return `${line.productId}-${line.variantId}`;
 }
 
-function getSortValue(value: string | null | undefined) {
-    return typeof value === "string" && value.trim() ? value.trim().toLocaleLowerCase("nb-NO") : "zzzz";
-}
-
 function sortLines(lines: PackingSlipLine[]) {
-    return [...lines].sort((a, b) => {
-        const categoryA = getSortValue(a.categoryName || a.category);
-        const categoryB = getSortValue(b.categoryName || b.category);
-
-        if (categoryA !== categoryB) {
-            return categoryA.localeCompare(categoryB, "nb-NO");
-        }
-
-        const subcategoryA = getSortValue(a.subcategoryName || a.subcategory);
-        const subcategoryB = getSortValue(b.subcategoryName || b.subcategory);
-
-        if (subcategoryA !== subcategoryB) {
-            return subcategoryA.localeCompare(subcategoryB, "nb-NO");
-        }
-
-        const productDiff = getSortValue(a.productName).localeCompare(getSortValue(b.productName), "nb-NO");
-
-        if (productDiff !== 0) {
-            return productDiff;
-        }
-
-        return getSortValue(a.variantLabel).localeCompare(getSortValue(b.variantLabel), "nb-NO");
-    });
+    return sortOrderLines(lines);
 }
 
 function mapOrder(id: string, data: any): PackingSlipOrder {

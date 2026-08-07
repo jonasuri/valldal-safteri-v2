@@ -45,6 +45,7 @@ type OrderFilter =
     | "approval"
     | "partial"
     | "new"
+    | "work"
     | "processing"
     | "packed"
     | "backorder";
@@ -75,6 +76,7 @@ const statusStyles: Record<OrderStatus, string> = {
 
 const orderFilters: { value: OrderFilter; label: string }[] = [
     { value: "all", label: "Alle" },
+    { value: "work", label: "Under arbeid" },
     { value: "approval", label: "Ventande godkjenning" },
     { value: "partial", label: "Delpakka" },
     { value: "new", label: "Nye" },
@@ -165,6 +167,9 @@ function filterOrders(orders: OrderRow[], filter: OrderFilter) {
     if (filter === "approval") return orders.filter((order) => order.status === "change_requested");
     if (filter === "partial") return orders.filter((order) => order.status === "partial");
     if (filter === "new") return orders.filter((order) => order.status === "new");
+    if (filter === "work") {
+        return orders.filter((order) => ["processing", "packed", "partial"].includes(order.status));
+    }
     if (filter === "processing") return orders.filter((order) => order.status === "processing");
     if (filter === "packed") return orders.filter((order) => order.status === "packed");
     if (filter === "backorder") {
@@ -328,16 +333,16 @@ export default function AdminOrdersPage() {
     }, [appBadgeCount]);
 
     return (
-        <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
-            <div className="mx-auto max-w-7xl px-6 py-10">
-                <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+        <main className="admin-orders-page min-h-screen text-[color:var(--admin-ink)]">
+            <div className="mx-auto max-w-7xl px-5 py-8 md:px-8 md:py-12">
+                <header className="flex flex-col gap-5 border-b border-[color:var(--admin-line)] pb-8 md:flex-row md:items-end md:justify-between">
                     <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">
-                            Admin
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">
+                            Ordrearbeid
                         </p>
                         <div className="mt-2 flex items-center gap-3">
-                            <h1 className="text-3xl font-semibold tracking-tight">
-                                Ordre
+                            <h1 className="text-3xl tracking-tight md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>
+                                Ordrar
                             </h1>
 
                             {appBadgeCount > 0 ? (
@@ -346,52 +351,46 @@ export default function AdminOrdersPage() {
                                 </span>
                             ) : null}
                         </div>
-                        <p className="mt-3 max-w-2xl text-sm leading-7 text-neutral-600">
-                            Sjå nye B2B-bestillingar, oppdater status og handter eventuelle endringar som må godkjennast av kunden.
+                        <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--admin-muted)]">
+                            Nye bestillingar og oppgåver som ventar, ligg øvst. Ferdige ordrar er samla under fakturering og historikk.
                         </p>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div>
                         <Link
                             href="/admin/orders/new"
-                            className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800"
+                            className="inline-flex rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)]"
                         >
-                            + Registrer ordre
-                        </Link>
-                        <Link
-                            href="/admin"
-                            className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
-                        >
-                            Tilbake til admin
+                            Ny manuell ordre
                         </Link>
                     </div>
-                </div>
+                </header>
 
-                <section className="mt-8 hidden gap-4 md:grid md:grid-cols-5">
-                    <div className="rounded-[20px] border border-neutral-200 bg-white p-5">
-                        <p className="text-xs uppercase tracking-[0.14em] text-neutral-500">Nye</p>
+                <section className="mt-7 grid grid-cols-2 gap-3 xl:grid-cols-5">
+                    <button type="button" onClick={() => setActiveFilter("new")} className="rounded-[18px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm md:p-5">
+                        <p className="text-xs font-medium text-[color:var(--admin-muted)]">Nye</p>
                         <p className="mt-2 text-3xl font-semibold">{orders.filter((o) => o.status === "new").length}</p>
-                    </div>
-                    <div className="rounded-[20px] border border-neutral-200 bg-white p-5">
-                        <p className="text-xs uppercase tracking-[0.14em] text-neutral-500">Under arbeid</p>
+                    </button>
+                    <button type="button" onClick={() => setActiveFilter("work")} className="rounded-[18px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm md:p-5">
+                        <p className="text-xs font-medium text-[color:var(--admin-muted)]">Under arbeid</p>
                         <p className="mt-2 text-3xl font-semibold">{orders.filter((o) => o.status === "processing" || o.status === "packed" || o.status === "partial").length}</p>
-                    </div>
-                    <div className={`rounded-[20px] border p-5 ${pendingApprovalCount > 0 ? "border-amber-200 bg-amber-50" : "border-neutral-200 bg-white"}`}>
-                        <p className={`text-xs uppercase tracking-[0.14em] ${pendingApprovalCount > 0 ? "text-amber-700" : "text-neutral-500"}`}>
-                            Ventande godkjenning
+                    </button>
+                    <button type="button" onClick={() => setActiveFilter("approval")} className={`rounded-[18px] border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm md:p-5 ${pendingApprovalCount > 0 ? "border-amber-200 bg-amber-50/80" : "border-[color:var(--admin-line)] bg-[color:var(--admin-card)]"}`}>
+                        <p className={`text-xs font-medium ${pendingApprovalCount > 0 ? "text-amber-700" : "text-[color:var(--admin-muted)]"}`}>
+                            Kundegodkjenning
                         </p>
                         <p className={`mt-2 text-3xl font-semibold ${pendingApprovalCount > 0 ? "text-amber-900" : "text-neutral-900"}`}>
                             {pendingApprovalCount}
                         </p>
-                    </div>
-                    <div className="rounded-[20px] border border-rose-200 bg-rose-50 p-5">
-                        <p className="text-xs uppercase tracking-[0.14em] text-rose-600">Restordre</p>
+                    </button>
+                    <button type="button" onClick={() => setActiveFilter("backorder")} className={`rounded-[18px] border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm md:p-5 ${activeRestorderCount > 0 ? "border-rose-200 bg-rose-50/80" : "border-[color:var(--admin-line)] bg-[color:var(--admin-card)]"}`}>
+                        <p className={`text-xs font-medium ${activeRestorderCount > 0 ? "text-rose-700" : "text-[color:var(--admin-muted)]"}`}>Restordre</p>
                         <p className="mt-2 text-3xl font-semibold text-rose-900">
                             {activeRestorderCount}
                         </p>
-                    </div>
-                    <div className={`rounded-[20px] border p-5 ${notInvoicedCount > 0 ? "border-amber-200 bg-amber-50" : "border-neutral-200 bg-white"}`}>
-                        <p className={`text-xs uppercase tracking-[0.14em] ${notInvoicedCount > 0 ? "text-amber-700" : "text-neutral-500"}`}>
+                    </button>
+                    <div className={`col-span-2 rounded-[18px] border p-4 md:p-5 xl:col-span-1 ${notInvoicedCount > 0 ? "border-amber-200 bg-amber-50/80" : "border-[color:var(--admin-line)] bg-[color:var(--admin-card)]"}`}>
+                        <p className={`text-xs font-medium ${notInvoicedCount > 0 ? "text-amber-700" : "text-[color:var(--admin-muted)]"}`}>
                             Ikkje fakturert
                         </p>
                         <p className={`mt-2 text-3xl font-semibold ${notInvoicedCount > 0 ? "text-amber-900" : "text-neutral-900"}`}>
@@ -400,16 +399,16 @@ export default function AdminOrdersPage() {
                     </div>
                 </section>
 
-                <section className="mt-8 rounded-[24px] border border-neutral-200 bg-white p-6">
+                <section className="mt-7 rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:p-6">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
-                            <h2 className="text-lg font-medium">Ordreliste</h2>
-                            <p className="mt-1 text-sm text-neutral-500">
-                                Aktive ordre og ordre som krev oppfølging.
+                            <h2 className="text-lg font-semibold tracking-tight">Aktive ordrar</h2>
+                            <p className="mt-1 text-sm text-[color:var(--admin-muted)]">
+                                Sortert etter kva som bør handterast først.
                             </p>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="admin-scrollbar flex gap-1 overflow-x-auto pb-1">
                             {orderFilters.map((filter) => {
                                 const isActive = activeFilter === filter.value;
 
@@ -418,9 +417,9 @@ export default function AdminOrdersPage() {
                                         key={filter.value}
                                         type="button"
                                         onClick={() => setActiveFilter(filter.value)}
-                                        className={`rounded-full border px-3 py-1.5 text-xs transition ${isActive
-                                            ? "border-neutral-900 bg-neutral-900 text-white"
-                                            : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                        className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-medium transition ${isActive
+                                            ? "bg-[color:var(--admin-ink)] text-white"
+                                            : "text-[color:var(--admin-muted)] hover:bg-black/5"
                                             }`}
                                     >
                                         {filter.label}
@@ -436,7 +435,7 @@ export default function AdminOrdersPage() {
                                 <Link
                                     key={order.id}
                                     href={`/admin/orders/${order.id}`}
-                                    className="block rounded-[20px] border border-neutral-200 bg-neutral-50 p-4 transition active:scale-[0.99]"
+                                    className="block rounded-[18px] border border-[color:var(--admin-line)] bg-white p-4 transition active:scale-[0.99]"
                                 >
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
@@ -525,9 +524,9 @@ export default function AdminOrdersPage() {
                         )}
                     </div>
 
-                    <div className="mt-6 hidden overflow-x-auto rounded-[18px] border border-neutral-200 md:block">
+                    <div className="mt-6 hidden overflow-x-auto rounded-[16px] border border-[color:var(--admin-line)] md:block">
                         <table className="w-full min-w-[980px] text-left text-sm">
-                            <thead className="bg-neutral-50 text-xs uppercase tracking-[0.12em] text-neutral-500">
+                            <thead className="bg-black/[0.018] text-[10px] uppercase tracking-[0.12em] text-[color:var(--admin-faint)]">
                                 <tr>
                                     <th className="px-4 py-3 font-medium">Ordre</th>
                                     <th className="px-4 py-3 font-medium">Kunde</th>
@@ -542,7 +541,7 @@ export default function AdminOrdersPage() {
                             <tbody className="divide-y divide-neutral-100">
                                 {sortedOrders.length ? (
                                     sortedOrders.map((order) => (
-                                        <tr key={order.id}>
+                                        <tr key={order.id} className={`transition hover:bg-black/[0.022] ${order.status === "new" || order.status === "change_requested" ? "bg-amber-50/35" : ""}`}>
                                             <td className="px-4 py-3">
                                                 <div className="font-medium text-neutral-900">
                                                     {order.orderNumber}
@@ -617,7 +616,7 @@ export default function AdminOrdersPage() {
                                             <td className="px-4 py-3">
                                                 <Link
                                                     href={`/admin/orders/${order.id}`}
-                                                    className="text-sm font-medium text-neutral-700 underline-offset-4 hover:text-neutral-900 hover:underline"
+                                                    className="inline-flex rounded-full border border-[color:var(--admin-line)] bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition hover:border-neutral-400 hover:text-neutral-900"
                                                 >
                                                     Opne →
                                                 </Link>
@@ -637,11 +636,11 @@ export default function AdminOrdersPage() {
                 </section>
 
                 {historicalOrders.length ? (
-                    <section className="mt-8 rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
+                    <section className="mt-7 rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:p-6">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div>
-                                <h2 className="text-lg font-medium">Fakturering og historikk</h2>
-                                <p className="mt-1 text-sm text-neutral-500">
+                                <h2 className="text-lg font-semibold tracking-tight">Fakturering og historikk</h2>
+                                <p className="mt-1 text-sm text-[color:var(--admin-muted)]">
                                     Søk etter kunde, ordrenummer eller status og sjå ferdige ordre sortert etter fakturering.
                                 </p>
                             </div>

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDoc, collection, getDocs, orderBy, query, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import type { CustomerType } from "@/lib/customersFirestore";
 import {
     fetchB2BProducts,
@@ -19,6 +19,7 @@ import {
     type B2BVariant,
 } from "@/lib/productsB2B";
 import { createOrder } from "@/lib/ordersFirestore";
+import { sendAdminCustomerEmail } from "@/lib/customerEmailActions";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 import ProductOrderPicker, { type ProductOrderLine } from "../../../components/admin/ProductOrderPicker";
 
@@ -299,6 +300,20 @@ export default function NewManualOrderPage() {
         setCustomerSearch("");
     }
 
+    function updateCustomerSearch(value: string) {
+        if (selectedCustomerId) {
+            setSelectedCustomerId(null);
+            setCustomerName("");
+            setCustomerDisplayName("");
+            setSameAsCompanyName(true);
+            setCustomerContactName("");
+            setCustomerEmail("");
+            setCustomerPhone("");
+            setOrganizationNumber("");
+        }
+        setCustomerSearch(value);
+    }
+
     function updateCustomerName(value: string) {
         setCustomerName(value);
         if (sameAsCompanyName) {
@@ -400,6 +415,12 @@ export default function NewManualOrderPage() {
                 unitCount,
             });
 
+            if (customerEmail.trim() && auth.currentUser) {
+                await sendAdminCustomerEmail(auth.currentUser, orderId, "confirmation").catch((emailError) => {
+                    console.error("Kunne ikkje sende automatisk ordrebekrefting for manuell ordre", emailError);
+                });
+            }
+
             router.push(`/admin/orders/${orderId}`);
         } catch (err) {
             console.error(err);
@@ -410,22 +431,23 @@ export default function NewManualOrderPage() {
     }
 
     return (
-        <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
-            <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-10">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <main className="min-h-screen text-[color:var(--admin-ink)]">
+            <div className="mx-auto max-w-7xl px-5 py-7 md:px-8 md:py-12">
+                <header className="border-b border-[color:var(--admin-line)] pb-8">
                     <div>
                         <Link
                             href="/admin/orders"
-                            className="text-sm text-neutral-600 underline-offset-4 hover:underline"
+                            className="text-xs font-medium text-[color:var(--admin-muted)] underline-offset-4 hover:text-[color:var(--admin-ink)] hover:underline"
                         >
                             ← Tilbake til ordre
                         </Link>
-                        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Registrer manuell ordre</h1>
-                        <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
-                            For bestillingar som kjem på telefon eller e-post. Ordren blir ikkje knytt til kundekonto, men går gjennom same ordreflyt.
+                        <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Ny ordre</p>
+                        <h1 className="mt-2 text-3xl tracking-tight md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>Registrer manuell ordre</h1>
+                        <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:var(--admin-muted)]">
+                            For bestillingar som kjem på telefon, e-post eller direkte. Vel kunde, legg til varer og kontroller samandraget før ordren blir oppretta.
                         </p>
                     </div>
-                </div>
+                </header>
 
                 {error ? (
                     <div className="mt-6 rounded-[18px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
@@ -435,21 +457,19 @@ export default function NewManualOrderPage() {
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-[1.6fr_0.8fr]">
                     <div className="space-y-6">
-                        <section className="rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
-                            <h2 className="text-lg font-medium">Kunde utan kundekonto</h2>
-                            <p className="mt-1 text-sm text-neutral-500">
-                                Minimum er kundenamn. Prisgruppe styrer kva prisar som blir brukt på varelinjene.
+                        <section className="rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:p-6">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-muted)]">Steg 1</p>
+                            <h2 className="mt-1 text-lg font-semibold tracking-tight">Vel kunde</h2>
+                            <p className="mt-1 text-sm text-[color:var(--admin-muted)]">
+                                Søk først i kunderegisteret. Dersom kunden ikkje finst, kan du opprette ein manuell kunde her.
                             </p>
-                            <div className="mt-5 rounded-[18px] border border-neutral-200 bg-neutral-50 p-4">
+                            <div className="mt-5 rounded-[16px] border border-[color:var(--admin-line)] bg-black/[0.018] p-4">
                                 <label className="block">
                                     <span className="text-sm font-medium">Søk i kunderegister</span>
                                     <input
                                         type="search"
                                         value={customerSearch}
-                                        onChange={(event) => {
-                                            setCustomerSearch(event.target.value);
-                                            setSelectedCustomerId(null);
-                                        }}
+                                        onChange={(event) => updateCustomerSearch(event.target.value)}
                                         placeholder="Søk namn, kontaktperson, e-post, telefon eller org.nr."
                                         className="mt-2 w-full rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm outline-none focus:border-neutral-500"
                                     />
@@ -618,24 +638,29 @@ export default function NewManualOrderPage() {
                             </div>
                         </section>
 
-                        <section className="rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
+                        <div>
+                            <div className="mb-3 px-1">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-muted)]">Steg 2</p>
+                                <h2 className="mt-1 text-lg font-semibold tracking-tight">Legg til varer</h2>
+                            </div>
                             <ProductOrderPicker
                                 customerType={customerType}
                                 mode="create"
                                 lines={lines}
                                 onChange={setLines}
-                                title="Produkt"
+                                title="Produkt og mengde"
                                 description={`Same produktliste som kunden brukar. Prisgruppe: ${customerTypeLabel(customerType)}.`}
                                 showProductsBeforeSearch={true}
                             />
-                        </section>
+                        </div>
                     </div>
 
                     <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
-                        <section className="rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
+                        <section className="rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 shadow-sm md:p-6">
                             <div className="flex items-start justify-between gap-4">
                                 <div>
-                                    <h2 className="text-lg font-medium">Ordre</h2>
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-muted)]">Steg 3</p>
+                                    <h2 className="mt-1 text-lg font-semibold tracking-tight">Kontroller ordre</h2>
                                     <p className="mt-1 text-sm text-neutral-500">
                                         {selectedCustomerId ? "Manuell ordre · kunde frå register" : "Manuell ordre · ny manuell kunde"}
                                     </p>
@@ -727,7 +752,7 @@ export default function NewManualOrderPage() {
                                 type="button"
                                 onClick={saveOrder}
                                 disabled={saving || !customerName.trim() || !lines.length}
-                                className="mt-5 w-full rounded-full bg-neutral-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+                                className="mt-5 w-full rounded-full bg-[color:var(--admin-accent)] px-5 py-3 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] disabled:opacity-50"
                             >
                                 {saving ? "Opprettar ordre …" : "Opprett ordre"}
                             </button>

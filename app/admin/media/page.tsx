@@ -10,6 +10,7 @@ import {
     type RetailerMediaCategory,
     type RetailerMediaItem,
 } from "@/lib/retailerMedia";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
 
 const CATEGORY_LABELS: Record<RetailerMediaCategory, string> = {
     saft: "Saft",
@@ -21,6 +22,7 @@ const CATEGORY_LABELS: Record<RetailerMediaCategory, string> = {
 };
 
 export default function AdminRetailerMediaPage() {
+    const { confirmAction } = useSystemFeedback();
     const [items, setItems] = useState<RetailerMediaItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -215,7 +217,13 @@ export default function AdminRetailerMediaPage() {
                                                     <button
                                                         className="rounded-xl border border-black/10 px-3 py-1.5 text-sm hover:bg-black/[0.03]"
                                                         onClick={async () => {
-                                                            if (!confirm("Slette dette biletet?")) return;
+                                                            const confirmed = await confirmAction({
+                                                                title: "Slett bilete?",
+                                                                message: "Biletet blir fjerna frå mediebanken.",
+                                                                confirmLabel: "Slett bilete",
+                                                                destructive: true,
+                                                            });
+                                                            if (!confirmed) return;
                                                             await deleteRetailerMedia(it);
                                                             await refresh();
                                                         }}

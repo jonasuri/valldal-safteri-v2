@@ -10,6 +10,7 @@ import { db } from "@/lib/firebase";
 import { fetchInventoryBalances, recordInventoryMovements } from "@/lib/inventory/firestore";
 import type { CustomerType } from "@/lib/customersFirestore";
 import ProductOrderPicker, { type ProductOrderLine } from "../../../components/admin/ProductOrderPicker";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
 
 type PickupCustomer = {
     id: string;
@@ -59,6 +60,7 @@ function mapCustomer(id: string, data: any): PickupCustomer {
 }
 
 export default function NewPickupPage() {
+    const { notify } = useSystemFeedback();
     const router = useRouter();
     const pickupIdRef = useRef<string | null>(null);
 
@@ -143,7 +145,7 @@ export default function NewPickupPage() {
             : manualDisplayName.trim() || companyName;
 
         if (!companyName) {
-            window.alert("Vel kunde eller skriv inn kundenamn.");
+            notify("Vel kunde eller skriv inn kundenamn.", "error");
             return null;
         }
 
@@ -169,7 +171,7 @@ export default function NewPickupPage() {
 
     async function savePickup() {
         if (!lines.length) {
-            window.alert("Legg til minst éi vare før du lagrar henting.");
+            notify("Legg til minst éi vare før du lagrar henting.", "error");
             return;
         }
 
@@ -258,9 +260,9 @@ export default function NewPickupPage() {
             router.push("/admin/pickups");
         } catch (error) {
             console.error(error);
-            window.alert(
+            notify(
                 error instanceof Error ? error.message : "Kunne ikkje lagre henting."
-            );
+            , "error");
         } finally {
             setSaving(false);
         }

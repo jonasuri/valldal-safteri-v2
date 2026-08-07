@@ -2,9 +2,9 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
+import { onAuthStateChanged, signInWithEmailAndPassword, type User } from "firebase/auth";
 import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
@@ -232,7 +232,8 @@ export default function AccountPage() {
         return () => unsubscribe();
     }, []);
 
-    async function handleSignIn() {
+    async function handleSignIn(event?: FormEvent<HTMLFormElement>) {
+        event?.preventDefault();
         setError("");
         setPasswordLinkSent(false);
         setSigningIn(true);
@@ -275,35 +276,20 @@ export default function AccountPage() {
         }
     }
 
-    async function handleSignOut() {
-        setError("");
-        await signOut(auth);
-        setCustomer(null);
-        setLatestOrder(null);
-        setPassword("");
-    }
-
     return (
-        <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
-            <div className="mx-auto max-w-4xl px-6 py-12">
-                <Link
-                    href="/"
-                    className="mb-6 inline-flex text-sm text-neutral-600 underline-offset-4 hover:underline"
-                >
-                    ← Tilbake til heimesida
-                </Link>
-
-                <div className="mb-8">
-                    <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">
-                        Valldal Safteri / Bryggeri
+        <main className="min-h-screen text-[color:var(--account-ink)]">
+            <div className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-14">
+                <div className="mb-9 border-b border-[color:var(--account-line)] pb-8">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--account-muted)]">
+                        {user ? "Kundekonto" : "Forhandlar og serveringsstad"}
                     </p>
-                    <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">
-                        {user ? "Mi side" : "B2B-konto"}
+                    <h1 className="mt-3 text-3xl tracking-tight md:text-5xl" style={{ fontFamily: "var(--font-serif)" }}>
+                        {user ? "Mi side" : "Bestill frå Valldal"}
                     </h1>
-                    <p className="mt-4 max-w-2xl text-sm leading-7 text-neutral-600">
+                    <p className="mt-4 max-w-2xl text-sm leading-7 text-[color:var(--account-muted)]">
                         {user
-                            ? "Her finn de aktive bestillingar, ordrehistorikk og snarveg til ny bestilling."
-                            : "Logg inn for å sjå prisar og legge inn bestilling som registrert kunde."}
+                            ? "Følg aktive bestillingar, finn tidlegare dokument og legg inn ei ny bestilling."
+                            : "Logg inn for å sjå avtaleprisar og leggje inn bestilling for verksemda di."}
                     </p>
                 </div>
 
@@ -312,35 +298,19 @@ export default function AccountPage() {
                         Lastar …
                     </section>
                 ) : user ? (
-                    <section className="rounded-[24px] border border-neutral-200 bg-white p-6">
-                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                            <div>
-                                <p className="text-xs uppercase tracking-[0.16em] text-neutral-500">
-                                    Innlogga
-                                </p>
-                                <h2 className="mt-2 text-xl font-medium">{user.email}</h2>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={handleSignOut}
-                                className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
-                            >
-                                Logg ut
-                            </button>
-                        </div>
-
+                    <section>
                         {checkingCustomer ? (
                             <p className="mt-6 text-sm text-neutral-500">Hentar kundedata …</p>
                         ) : customer && customer.active ? (
                             <>
-                                <div className="mt-6 rounded-[18px] border border-rose-100 bg-[#faf6f6] p-5">
-                                    <p className="text-xs uppercase tracking-[0.16em] text-rose-500">
-                                        Kunde
+                                <div className="rounded-[22px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-6">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--account-muted)]">
+                                        Kundekonto
                                     </p>
                                     <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                         <div>
-                                            <h3 className="text-xl font-medium">{customer.companyName}</h3>
-                                            <div className="mt-3 grid gap-3 text-sm text-neutral-600 md:grid-cols-2">
+                                            <h3 className="text-2xl tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>{customer.companyName}</h3>
+                                            <div className="mt-4 grid gap-2 text-sm text-[color:var(--account-muted)] md:grid-cols-2">
                                                 <p>Kontakt: {customer.contactName || "–"}</p>
                                                 <p>E-post: {customer.email}</p>
                                                 <p>Prisgruppe: {customerTypeLabel(customer.customerType)}</p>
@@ -351,33 +321,33 @@ export default function AccountPage() {
                                     </div>
                                 </div>
                                 {customer.profileCompleted ? (
-                                    <div className="mt-4 rounded-[18px] border border-neutral-200 bg-white p-5">
-                                        <p className="text-xs uppercase tracking-[0.16em] text-neutral-500">
-                                            Snarvegar
+                                    <div className="mt-5 rounded-[22px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-5">
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--account-muted)]">
+                                            Kva vil du gjere?
                                         </p>
 
                                         <div className="mt-4 flex flex-wrap gap-2">
                                             <Link
                                                 href="/account/order"
-                                                className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-900 transition hover:bg-rose-100"
+                                                className="rounded-full bg-[color:var(--account-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--account-accent-hover)]"
                                             >
                                                 Ny bestilling
                                             </Link>
                                             <Link
                                                 href="/account/orders"
-                                                className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
+                                                className="account-button-secondary px-4 py-2 text-sm"
                                             >
                                                 Mine bestillingar
                                             </Link>
                                             <Link
                                                 href="/account/pickups"
-                                                className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
+                                                className="account-button-secondary px-4 py-2 text-sm"
                                             >
                                                 Hentehistorikk
                                             </Link>
                                             <Link
                                                 href="/account/profile"
-                                                className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
+                                                className="account-button-secondary px-4 py-2 text-sm"
                                             >
                                                 Kundeprofil
                                             </Link>
@@ -400,9 +370,9 @@ export default function AccountPage() {
 
                                 {customer.profileCompleted && latestOrder ? (
                                     <div
-                                        className={`mt-6 rounded-[18px] border p-5 ${latestOrder.status === "change_requested"
+                                        className={`mt-5 rounded-[22px] border p-6 ${latestOrder.status === "change_requested"
                                             ? "border-amber-200 bg-amber-50"
-                                            : "border-rose-100 bg-[#fffafa]"
+                                            : "border-[color:var(--account-line)] bg-[color:var(--account-card)]"
                                             }`}
                                     >
                                         <p className="text-xs uppercase tracking-[0.16em] text-neutral-500">
@@ -476,46 +446,54 @@ export default function AccountPage() {
                         ) : null}
                     </section>
                 ) : (
-                    <section className="rounded-[24px] border border-neutral-200 bg-white p-6">
-                        <h2 className="text-xl font-medium">Logg inn</h2>
-                        <p className="mt-2 text-sm text-neutral-500">
-                            For kundar med B2B-avtale.
+                    <section className="mx-auto max-w-xl rounded-[24px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-6 shadow-sm md:p-8">
+                        <h2 className="text-2xl tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>Logg inn</h2>
+                        <p className="mt-2 text-sm text-[color:var(--account-muted)]">
+                            Bruk e-postadressa som er registrert på kundekontoen.
                         </p>
 
-                        <div className="mt-6 grid gap-4">
-                            <label className="space-y-1 text-sm font-medium text-neutral-800">
-                                E-post
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="kunde@firma.no"
-                                />
-                            </label>
+                        <form onSubmit={handleSignIn} className="mt-6" aria-describedby={error ? "account-login-error" : undefined}>
+                            <div className="grid gap-4">
+                                <label className="space-y-1 text-sm font-medium text-neutral-800">
+                                    E-post
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        autoComplete="email"
+                                        inputMode="email"
+                                        required
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full rounded-[12px] border border-[color:var(--account-line)] bg-white px-3 py-2.5 text-sm font-normal outline-none"
+                                        placeholder="kunde@firma.no"
+                                    />
+                                </label>
 
-                            <label className="space-y-1 text-sm font-medium text-neutral-800">
-                                Passord
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="Passord"
-                                />
-                            </label>
-                        </div>
+                                <label className="space-y-1 text-sm font-medium text-neutral-800">
+                                    Passord
+                                    <input
+                                        type="password"
+                                        name="password"
+                                        autoComplete="current-password"
+                                        required
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full rounded-[12px] border border-[color:var(--account-line)] bg-white px-3 py-2.5 text-sm font-normal outline-none"
+                                        placeholder="Passord"
+                                    />
+                                </label>
+                            </div>
 
-                        <button
-                            type="button"
-                            onClick={handleSignIn}
-                            disabled={signingIn}
-                            className="mt-6 rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-60"
-                        >
-                            {signingIn ? "Loggar inn …" : "Logg inn"}
-                        </button>
+                            <button
+                                type="submit"
+                                disabled={signingIn}
+                                className="mt-6 rounded-full bg-[color:var(--account-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--account-accent-hover)] disabled:cursor-wait disabled:opacity-60"
+                            >
+                                {signingIn ? "Loggar inn …" : "Logg inn"}
+                            </button>
+                        </form>
 
-                        <div className="mt-6 rounded-[18px] border border-neutral-200 bg-neutral-50 p-4">
+                        <div className="mt-7 border-t border-[color:var(--account-line)] pt-6">
                             <h3 className="text-sm font-medium text-neutral-900">
                                 Første gong eller gløymt passord?
                             </h3>
@@ -542,7 +520,7 @@ export default function AccountPage() {
                 )}
 
                 {error ? (
-                    <div className="mt-6 rounded-[16px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <div id="account-login-error" role="alert" className="mx-auto mt-6 max-w-xl rounded-[16px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                         {error}
                     </div>
                 ) : null}

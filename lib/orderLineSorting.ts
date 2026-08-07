@@ -57,6 +57,44 @@ function categoryRank(line: SortableOrderLine) {
     return index === -1 ? 999 : index;
 }
 
+function variantAmountInBaseUnit(label: string | null | undefined) {
+    const normalized = sortValue(label).replace(",", ".");
+    const match = normalized.match(/(\d+(?:\.\d+)?)\s*(ml|cl|l|g|kg)\b/);
+
+    if (!match) return null;
+
+    const multiplier: Record<string, number> = {
+        ml: 1,
+        cl: 10,
+        l: 1000,
+        g: 1,
+        kg: 1000,
+    };
+
+    return Number(match[1]) * multiplier[match[2]];
+}
+
+export function compareVariantLabels(
+    a: string | null | undefined,
+    b: string | null | undefined
+) {
+    const amountA = variantAmountInBaseUnit(a);
+    const amountB = variantAmountInBaseUnit(b);
+
+    if (amountA !== null && amountB !== null && amountA !== amountB) {
+        return amountA - amountB;
+    }
+
+    if (amountA !== null && amountB === null) return -1;
+    if (amountA === null && amountB !== null) return 1;
+
+    return sortValue(a).localeCompare(sortValue(b), "nb-NO", { numeric: true });
+}
+
+export function sortVariantsBySize<T extends { label: string }>(variants: T[]): T[] {
+    return [...variants].sort((a, b) => compareVariantLabels(a.label, b.label));
+}
+
 export function sortOrderLines<T extends SortableOrderLine>(lines: T[]): T[] {
     return [...lines].sort((a, b) => {
         const brandDiff = brandRank(a) - brandRank(b);
@@ -71,6 +109,15 @@ export function sortOrderLines<T extends SortableOrderLine>(lines: T[]): T[] {
             return categoryA.localeCompare(categoryB, "nb-NO");
         }
 
+        const subcategoryDiff = sortValue(a.subcategoryName || a.subcategory).localeCompare(
+            sortValue(b.subcategoryName || b.subcategory),
+            "nb-NO"
+        );
+
+        if (subcategoryDiff !== 0) {
+            return subcategoryDiff;
+        }
+
         const productDiff = sortValue(a.productName).localeCompare(
             sortValue(b.productName),
             "nb-NO"
@@ -80,10 +127,7 @@ export function sortOrderLines<T extends SortableOrderLine>(lines: T[]): T[] {
             return productDiff;
         }
 
-        return sortValue(a.variantLabel).localeCompare(
-            sortValue(b.variantLabel),
-            "nb-NO"
-        );
+        return compareVariantLabels(a.variantLabel, b.variantLabel);
     });
 }
 

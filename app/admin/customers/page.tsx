@@ -1,15 +1,17 @@
-
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { auth } from "@/lib/firebase";
 import {
     createCustomer,
     listenToCustomers,
+    updateCustomer,
     type AdminCustomerRow,
     type CustomerType,
 } from "@/lib/customersFirestore";
+import { useSystemFeedback } from "@/app/components/SystemFeedback";
+
+type CustomerFilter = "all" | "account" | "manual" | "inactive";
 
 type CustomerForm = {
     companyName: string;
@@ -22,7 +24,6 @@ type CustomerForm = {
     openingHours: string;
     customerType: CustomerType;
     active: boolean;
-    profileCompleted: boolean;
 };
 
 const emptyForm: CustomerForm = {
@@ -36,483 +37,412 @@ const emptyForm: CustomerForm = {
     openingHours: "",
     customerType: "retail",
     active: true,
-    profileCompleted: false,
 };
+
+function customerToForm(customer: AdminCustomerRow): CustomerForm {
+    return {
+        companyName: customer.companyName,
+        displayName: customer.displayName || customer.companyName,
+        sameAsCompanyName: customer.sameAsCompanyName,
+        contactName: customer.contactName,
+        email: customer.email,
+        phone: customer.phone,
+        organizationNumber: customer.organizationNumber,
+        openingHours: customer.openingHours,
+        customerType: customer.customerType,
+        active: customer.active,
+    };
+}
 
 function customerTypeLabel(type: CustomerType) {
     return type === "grossist" ? "Grossist" : "Retail";
 }
 
 export default function AdminCustomersPage() {
+    const { notify, confirmAction } = useSystemFeedback();
     const [customers, setCustomers] = useState<AdminCustomerRow[]>([]);
-    const [form, setForm] = useState<CustomerForm>(emptyForm);
-    const [showForm, setShowForm] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
     const [queryText, setQueryText] = useState("");
-    const [error, setError] = useState("");
-    const [success, setSuccess] = useState("");
+    const [filter, setFilter] = useState<CustomerFilter>("all");
+    const [panelOpen, setPanelOpen] = useState(false);
+    const [selectedCustomer, setSelectedCustomer] = useState<AdminCustomerRow | null>(null);
+    const [form, setForm] = useState<CustomerForm>(emptyForm);
+    const [initialForm, setInitialForm] = useState<CustomerForm>(emptyForm);
+    const [saving, setSaving] = useState(false);
+    const [sendingPasswordLink, setSendingPasswordLink] = useState(false);
+    const [formError, setFormError] = useState("");
 
     useEffect(() => {
-        setLoading(true);
-        setError("");
-
         const unsubscribe = listenToCustomers((nextCustomers) => {
             setCustomers(nextCustomers);
             setLoading(false);
+            setSelectedCustomer((current) => {
+                if (!current) return null;
+                return nextCustomers.find((customer) => customer.id === current.id) || current;
+            });
         });
-
         return () => unsubscribe();
     }, []);
 
+    const counts = useMemo(() => ({
+        all: customers.length,
+        account: customers.filter((customer) => Boolean(customer.authUid)).length,
+        manual: customers.filter((customer) => !customer.authUid).length,
+        inactive: customers.filter((customer) => !customer.active).length,
+    }), [customers]);
+
     const filteredCustomers = useMemo(() => {
-        const q = queryText.trim().toLowerCase();
-        if (!q) return customers;
-
+        const search = queryText.trim().toLowerCase();
         return customers.filter((customer) => {
-            return (
-                customer.companyName.toLowerCase().includes(q) ||
-                customer.contactName.toLowerCase().includes(q) ||
-                customer.email.toLowerCase().includes(q) ||
-                customer.phone.toLowerCase().includes(q)
-            );
+            const matchesFilter =
+                filter === "all" ||
+                (filter === "account" && Boolean(customer.authUid)) ||
+                (filter === "manual" && !customer.authUid) ||
+                (filter === "inactive" && !customer.active);
+            if (!matchesFilter) return false;
+            if (!search) return true;
+            return [
+                customer.companyName,
+                customer.displayName,
+                customer.contactName,
+                customer.email,
+                customer.phone,
+                customer.organizationNumber,
+            ].some((value) => value.toLowerCase().includes(search));
         });
-    }, [customers, queryText]);
+    }, [customers, filter, queryText]);
 
-    const customerProfiles = useMemo(
-        () => filteredCustomers.filter((customer) => customer.customerSource !== "manual" && Boolean(customer.authUid)),
-        [filteredCustomers]
-    );
+    const hasChanges = JSON.stringify(form) !== JSON.stringify(initialForm);
 
-    const manualCustomers = useMemo(
-        () => filteredCustomers.filter((customer) => customer.customerSource === "manual" || !customer.authUid),
-        [filteredCustomers]
-    );
+    function openNewCustomer() {
+        setSelectedCustomer(null);
+        setForm(emptyForm);
+        setInitialForm(emptyForm);
+        setFormError("");
+        setPanelOpen(true);
+    }
+
+    function openCustomer(customer: AdminCustomerRow) {
+        const nextForm = customerToForm(customer);
+        setSelectedCustomer(customer);
+        setForm(nextForm);
+        setInitialForm(nextForm);
+        setFormError("");
+        setPanelOpen(true);
+    }
+
+    async function closePanel() {
+        if (hasChanges) {
+            const confirmed = await confirmAction({
+                title: "Forkast endringane?",
+                message: "Endringar som ikkje er lagra, går tapt.",
+                confirmLabel: "Forkast endringar",
+                destructive: true,
+            });
+            if (!confirmed) return;
+        }
+        setPanelOpen(false);
+        setFormError("");
+    }
 
     function updateForm<K extends keyof CustomerForm>(key: K, value: CustomerForm[K]) {
-        setForm((prev) => {
+        setForm((current) => {
             if (key === "companyName") {
                 const companyName = String(value);
                 return {
-                    ...prev,
+                    ...current,
                     companyName,
-                    displayName: prev.sameAsCompanyName ? companyName : prev.displayName,
+                    displayName: current.sameAsCompanyName ? companyName : current.displayName,
                 };
             }
-
             if (key === "sameAsCompanyName") {
                 const sameAsCompanyName = Boolean(value);
                 return {
-                    ...prev,
+                    ...current,
                     sameAsCompanyName,
-                    displayName: sameAsCompanyName ? prev.companyName : prev.displayName,
+                    displayName: sameAsCompanyName ? current.companyName : current.displayName,
                 };
             }
-
-            return { ...prev, [key]: value };
+            return { ...current, [key]: value };
         });
-        setError("");
-        setSuccess("");
+        setFormError("");
     }
 
-    async function handleCreateCustomer() {
-        setError("");
-        setSuccess("");
-
+    async function saveCustomer() {
         const companyName = form.companyName.trim();
-        const sameAsCompanyName = form.sameAsCompanyName;
-        const displayName = sameAsCompanyName ? companyName : form.displayName.trim();
-        const contactName = form.contactName.trim();
+        const displayName = form.sameAsCompanyName ? companyName : form.displayName.trim();
         const email = form.email.trim().toLowerCase();
-        const phone = form.phone.trim();
-        const organizationNumber = form.organizationNumber.trim();
-        const openingHours = form.openingHours.trim();
 
+        if (!companyName) {
+            setFormError("Firmanamn er påkravd.");
+            return;
+        }
+        if (!displayName) {
+            setFormError("Visningsnamn er påkravd.");
+            return;
+        }
         if (!email) {
-            setError("E-post er påkravd.");
+            setFormError("E-post er påkravd.");
             return;
         }
 
-        if (!displayName && !sameAsCompanyName) {
-            setError("Visningsnamn må fyllast ut dersom det er ulikt firmanamn.");
-            return;
-        }
+        const payload = {
+            companyName,
+            displayName,
+            sameAsCompanyName: form.sameAsCompanyName,
+            contactName: form.contactName.trim(),
+            email,
+            phone: form.phone.trim(),
+            organizationNumber: form.organizationNumber.trim(),
+            openingHours: form.openingHours.trim(),
+            customerType: form.customerType,
+            active: form.active,
+            profileCompleted: Boolean(companyName && form.contactName.trim() && form.phone.trim() && form.organizationNumber.trim()),
+        };
 
         setSaving(true);
-
+        setFormError("");
         try {
-            await createCustomer({
-                companyName,
-                displayName,
-                sameAsCompanyName,
-                contactName,
-                email,
-                phone,
-                organizationNumber,
-                openingHours,
-                customerType: form.customerType,
-                active: form.active,
-                profileCompleted: Boolean(companyName && contactName && phone && organizationNumber),
-            });
-
-            setForm(emptyForm);
-            setShowForm(false);
-            setSuccess("Kunde oppretta.");
-        } catch (err) {
-            console.error(err);
-            setError("Kunne ikkje opprette kunde.");
+            if (selectedCustomer) {
+                await updateCustomer(selectedCustomer.id, payload);
+                const savedForm = { ...form, ...payload };
+                setForm(savedForm);
+                setInitialForm(savedForm);
+                notify("Kunden er oppdatert.", "success");
+            } else {
+                await createCustomer(payload);
+                setPanelOpen(false);
+                notify("Kunden er oppretta.", "success");
+            }
+        } catch (error) {
+            console.error(error);
+            setFormError(selectedCustomer ? "Kunne ikkje lagre endringane." : "Kunne ikkje opprette kunden.");
         } finally {
             setSaving(false);
         }
     }
 
-    function CustomerTable({
-        title,
-        description,
-        rows,
-        emptyText,
-    }: {
-        title: string;
-        description: string;
-        rows: AdminCustomerRow[];
-        emptyText: string;
-    }) {
-        return (
-            <section className="rounded-[24px] border border-neutral-200 bg-white p-6">
-                <div>
-                    <h2 className="text-lg font-medium">{title}</h2>
-                    <p className="mt-1 text-sm text-neutral-500">{description}</p>
-                </div>
-
-                <div className="mt-6 overflow-x-auto rounded-[18px] border border-neutral-200">
-                    <table className="w-full min-w-[760px] text-left text-sm">
-                        <thead className="bg-neutral-50">
-                            <tr>
-                                <th className="px-4 py-3 font-medium">Firma</th>
-                                <th className="px-4 py-3 font-medium">Kontakt</th>
-                                <th className="px-4 py-3 font-medium">Type</th>
-                                <th className="px-4 py-3 font-medium">Konto</th>
-                                <th className="px-4 py-3 font-medium">Status</th>
-                                <th className="px-4 py-3 font-medium">Handling</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-neutral-100">
-                            {loading ? (
-                                <tr>
-                                    <td colSpan={6} className="px-4 py-10 text-center text-neutral-500">
-                                        Lastar kundar …
-                                    </td>
-                                </tr>
-                            ) : rows.length ? (
-                                rows.map((customer) => (
-                                    <tr key={customer.id}>
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-neutral-900">
-                                                {customer.displayName || customer.companyName}
-                                            </div>
-                                            {customer.displayName && customer.displayName !== customer.companyName ? (
-                                                <div className="text-xs text-neutral-500">
-                                                    Fakturerast til: {customer.companyName}
-                                                </div>
-                                            ) : null}
-                                            <div className="text-xs text-neutral-500">{customer.email}</div>
-                                        </td>
-                                        <td className="px-4 py-3 text-neutral-700">
-                                            <div>{customer.contactName || "–"}</div>
-                                            <div className="text-xs text-neutral-500">{customer.phone || "–"}</div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs text-neutral-700">
-                                                {customerTypeLabel(customer.customerType)}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {customer.customerSource === "manual" || !customer.authUid ? (
-                                                <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs text-neutral-600">
-                                                    Manuell kunde
-                                                </span>
-                                            ) : (
-                                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700">
-                                                    Kundekonto
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className={
-                                                "rounded-full border px-2.5 py-1 text-xs " +
-                                                (customer.active
-                                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                                    : "border-neutral-200 bg-neutral-50 text-neutral-500")
-                                            }>
-                                                {customer.active ? "Aktiv" : "Inaktiv"}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <Link
-                                                href={`/admin/customers/${customer.id}`}
-                                                className="text-sm font-medium text-neutral-700 underline-offset-4 hover:text-neutral-900 hover:underline"
-                                            >
-                                                Rediger →
-                                            </Link>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={6} className="px-4 py-10 text-center text-neutral-500">
-                                        {emptyText}
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-        );
+    async function sendPasswordLink() {
+        if (!selectedCustomer || !form.email.trim()) return;
+        setSendingPasswordLink(true);
+        setFormError("");
+        try {
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) throw new Error("UNAUTHORIZED");
+            const response = await fetch("/api/account/password-link", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ customerId: selectedCustomer.id }),
+            });
+            if (!response.ok) throw new Error("PASSWORD_LINK_FAILED");
+            notify(
+                selectedCustomer.authUid ? "Ny passordlenke er send til kunden." : "Kundekontoen er oppretta, og tilgang er send.",
+                "success"
+            );
+        } catch (error) {
+            console.error(error);
+            setFormError("Kunne ikkje opprette kundekonto eller sende passordlenke.");
+        } finally {
+            setSendingPasswordLink(false);
+        }
     }
 
     return (
-        <main className="min-h-screen bg-[#f7f5f1] text-neutral-900">
-            <div className="mx-auto max-w-7xl px-6 py-10">
-                <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+        <main className="min-h-screen text-[color:var(--admin-ink)]">
+            <div className="mx-auto max-w-7xl px-5 py-8 md:px-8 md:py-12">
+                <header className="flex flex-col gap-5 border-b border-[color:var(--admin-line)] pb-8 sm:flex-row sm:items-end sm:justify-between">
                     <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">
-                            Admin
-                        </p>
-                        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-                            Kundar
-                        </h1>
-                        <p className="mt-3 max-w-2xl text-sm text-neutral-600">
-                            Administrer retailkundar, grossistar og prisgrupper.
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Kundar</p>
+                        <h1 className="mt-2 text-3xl tracking-tight md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>Kunderegister</h1>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--admin-muted)]">
+                            Kontaktinformasjon, prisgruppe og tilgang til kundeområdet på éin stad.
                         </p>
                     </div>
+                    <button
+                        type="button"
+                        onClick={openNewCustomer}
+                        className="inline-flex items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)]"
+                    >
+                        Ny kunde
+                    </button>
+                </header>
 
-                    <div className="flex flex-wrap gap-2">
-                        <Link
-                            href="/admin"
-                            className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
-                        >
-                            Til admin
-                        </Link>
-
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setShowForm((prev) => !prev);
-                                setError("");
-                                setSuccess("");
-                            }}
-                            className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
-                        >
-                            {showForm ? "Lukk" : "Ny kunde"}
-                        </button>
-                    </div>
-                </div>
-
-                {showForm ? (
-                    <section className="mt-8 rounded-[24px] border border-neutral-200 bg-white p-6">
-                        <div>
-                            <h2 className="text-lg font-medium">Ny kunde</h2>
-                            <p className="mt-1 text-sm text-neutral-500">
-                                Opprett kunden med e-post og prisgruppe. Kundekonto kan aktiverast frå kundekortet etterpå.
-                            </p>
-                        </div>
-
-                        <div className="mt-6 grid gap-4 md:grid-cols-2">
-                            <label className="space-y-1 text-sm font-medium text-neutral-800">
-                                Firmanamn / fakturanamn (valfritt)
-                                <input
-                                    type="text"
-                                    value={form.companyName}
-                                    onChange={(e) => updateForm("companyName", e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="T.d. Fjordkroa AS"
-                                />
-                            </label>
-                            <div className="space-y-2 rounded-[12px] border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-800 md:col-span-2">
-                                <label className="flex items-start gap-3 font-medium">
-                                    <input
-                                        type="checkbox"
-                                        checked={form.sameAsCompanyName}
-                                        onChange={(e) => updateForm("sameAsCompanyName", e.target.checked)}
-                                        className="mt-1 h-4 w-4"
-                                    />
-                                    <span>
-                                        Visningsnamn er same som firmanamn
-                                    </span>
-                                </label>
-
-                                <label className="block space-y-1 text-sm font-medium text-neutral-800">
-                                    Visningsnamn / butikknamn
-                                    <input
-                                        type="text"
-                                        value={form.displayName}
-                                        onChange={(e) => updateForm("displayName", e.target.value)}
-                                        disabled={form.sameAsCompanyName}
-                                        className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-500"
-                                        placeholder="T.d. Bunnpris Valldal"
-                                    />
-                                </label>
-                            </div>
-
-                            <label className="space-y-1 text-sm font-medium text-neutral-800">
-                                Kontaktperson (valfritt)
-                                <input
-                                    type="text"
-                                    value={form.contactName}
-                                    onChange={(e) => updateForm("contactName", e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="Namn"
-                                />
-                            </label>
-
-                            <label className="space-y-1 text-sm font-medium text-neutral-800">
-                                E-post
-                                <input
-                                    type="email"
-                                    value={form.email}
-                                    onChange={(e) => updateForm("email", e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="kunde@firma.no"
-                                />
-                            </label>
-
-                            <label className="space-y-1 text-sm font-medium text-neutral-800">
-                                Telefon (valfritt)
-                                <input
-                                    type="tel"
-                                    value={form.phone}
-                                    onChange={(e) => updateForm("phone", e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="Telefonnummer"
-                                />
-                            </label>
-
-                            <label className="space-y-1 text-sm font-medium text-neutral-800">
-                                Org.nr. (valfritt)
-                                <input
-                                    type="text"
-                                    value={form.organizationNumber}
-                                    onChange={(e) => updateForm("organizationNumber", e.target.value)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="Organisasjonsnummer"
-                                />
-                            </label>
-
-                            <label className="space-y-1 text-sm font-medium text-neutral-800 md:col-span-2">
-                                Opningstider / leveringsinfo
-                                <textarea
-                                    value={form.openingHours}
-                                    onChange={(e) => updateForm("openingHours", e.target.value)}
-                                    rows={3}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
-                                    placeholder="Valfritt. Til dømes opningstider, varemottak eller ønskje for levering."
-                                />
-                            </label>
-
-                            <label className="space-y-1 text-sm font-medium text-neutral-800">
-                                Kundetype
-                                <select
-                                    value={form.customerType}
-                                    onChange={(e) => updateForm("customerType", e.target.value as CustomerType)}
-                                    className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-neutral-800"
+                <section className="mt-7 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="admin-scrollbar flex gap-1 overflow-x-auto">
+                            {([
+                                ["all", "Alle"],
+                                ["account", "Med kundekonto"],
+                                ["manual", "Manuelle"],
+                                ["inactive", "Inaktive"],
+                            ] as const).map(([value, label]) => (
+                                <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() => setFilter(value)}
+                                    className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-medium transition ${
+                                        filter === value
+                                            ? "bg-[color:var(--admin-ink)] text-white"
+                                            : "text-[color:var(--admin-muted)] hover:bg-black/5"
+                                    }`}
                                 >
-                                    <option value="retail">Retail</option>
-                                    <option value="grossist">Grossist</option>
-                                </select>
-                            </label>
-
-                            <label className="flex items-center gap-3 rounded-[12px] border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-medium text-neutral-800">
-                                <input
-                                    type="checkbox"
-                                    checked={form.active}
-                                    onChange={(e) => updateForm("active", e.target.checked)}
-                                    className="h-4 w-4"
-                                />
-                                Aktiv kunde
-                            </label>
-
-                            <div className="rounded-[12px] border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
-                                <div className="font-medium text-neutral-800">Kundestatus</div>
-                                <div className="mt-1 text-xs text-neutral-500">
-                                    Kunden blir oppretta utan innlogging. Du kan aktivere kundekontoen og sende passordlenke frå kundekortet.
-                                </div>
-                            </div>
+                                    {label} <span className="ml-1 opacity-60">{counts[value]}</span>
+                                </button>
+                            ))}
                         </div>
-
-                        <div className="mt-6 flex flex-wrap items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={handleCreateCustomer}
-                                disabled={saving}
-                                className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-60"
-                            >
-                                {saving ? "Lagrar …" : "Lagre kunde"}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setForm(emptyForm);
-                                    setShowForm(false);
-                                    setError("");
-                                    setSuccess("");
-                                }}
-                                className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-50"
-                            >
-                                Avbryt
-                            </button>
-                        </div>
-                    </section>
-                ) : null}
-
-                {error ? (
-                    <div className="mt-6 rounded-[16px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        {error}
-                    </div>
-                ) : null}
-
-                {success ? (
-                    <div className="mt-6 rounded-[16px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                        {success}
-                    </div>
-                ) : null}
-
-                <section className="mt-8 rounded-[24px] border border-neutral-200 bg-white p-6">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <h2 className="text-lg font-medium">Kunderegister</h2>
-                            <p className="mt-1 text-sm text-neutral-500">
-                                {filteredCustomers.length} av {customers.length} kundar
-                            </p>
-                        </div>
-
-                        <input
-                            type="search"
-                            value={queryText}
-                            onChange={(e) => setQueryText(e.target.value)}
-                            className="w-full rounded-[12px] border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-neutral-800 md:w-72"
-                            placeholder="Søk etter firma, kontakt eller e-post"
-                        />
+                        <label className="relative block w-full lg:w-80">
+                            <span className="sr-only">Søk i kunderegisteret</span>
+                            <input
+                                type="search"
+                                value={queryText}
+                                onChange={(event) => setQueryText(event.target.value)}
+                                className="w-full rounded-full border border-[color:var(--admin-line-strong)] bg-white px-4 py-2.5 text-sm outline-none"
+                                placeholder="Søk etter firma, kontakt eller e-post"
+                            />
+                        </label>
                     </div>
                 </section>
 
-                <div className="mt-6 grid gap-6">
-                    <CustomerTable
-                        title={`Kundeprofilar (${customerProfiles.length})`}
-                        description="Kundar med innlogging. Desse kan sjå historikk, ordrebekreftelsar og følgesedlar i portalen."
-                        rows={customerProfiles}
-                        emptyText="Ingen kundeprofilar funne."
-                    />
-
-                    <CustomerTable
-                        title={`Manuelle kundar (${manualCustomers.length})`}
-                        description="Kundar utan innlogging. Desse må følgjast opp via telefon, e-post eller direkte avtale."
-                        rows={manualCustomers}
-                        emptyText="Ingen manuelle kundar funne."
-                    />
-                </div>
-
+                <section className="mt-5 overflow-hidden rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)]">
+                    <div className="hidden grid-cols-[minmax(220px,1.4fr)_minmax(180px,1fr)_110px_130px_40px] gap-4 border-b border-[color:var(--admin-line)] bg-black/[0.018] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--admin-faint)] md:grid">
+                        <span>Kunde</span><span>Kontakt</span><span>Type</span><span>Tilgang</span><span />
+                    </div>
+                    <div className="divide-y divide-[color:var(--admin-line)]">
+                        {loading ? (
+                            <p className="px-5 py-12 text-center text-sm text-[color:var(--admin-muted)]">Lastar kundar …</p>
+                        ) : filteredCustomers.length ? (
+                            filteredCustomers.map((customer) => (
+                                <button
+                                    key={customer.id}
+                                    type="button"
+                                    onClick={() => openCustomer(customer)}
+                                    className="group grid w-full gap-3 px-5 py-4 text-left transition hover:bg-black/[0.025] md:grid-cols-[minmax(220px,1.4fr)_minmax(180px,1fr)_110px_130px_40px] md:items-center md:gap-4"
+                                >
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <p className="truncate text-sm font-semibold">{customer.displayName || customer.companyName}</p>
+                                            {!customer.active ? <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] text-neutral-500">Inaktiv</span> : null}
+                                        </div>
+                                        {customer.displayName && customer.displayName !== customer.companyName ? (
+                                            <p className="mt-1 truncate text-xs text-[color:var(--admin-muted)]">Faktura: {customer.companyName}</p>
+                                        ) : null}
+                                    </div>
+                                    <div className="min-w-0 text-xs text-[color:var(--admin-muted)]">
+                                        <p className="truncate text-sm text-[color:var(--admin-ink)]">{customer.contactName || "Ingen kontaktperson"}</p>
+                                        <p className="mt-1 truncate">{customer.email}</p>
+                                    </div>
+                                    <span className="w-fit rounded-full bg-[color:var(--admin-active)] px-2.5 py-1 text-[11px] text-[color:var(--admin-muted)]">
+                                        {customerTypeLabel(customer.customerType)}
+                                    </span>
+                                    <span className={`w-fit rounded-full px-2.5 py-1 text-[11px] ${
+                                        customer.authUid ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"
+                                    }`}>
+                                        {customer.authUid ? "Kundekonto" : "Manuell"}
+                                    </span>
+                                    <span className="hidden text-right text-[color:var(--admin-faint)] transition group-hover:translate-x-0.5 md:block">→</span>
+                                </button>
+                            ))
+                        ) : (
+                            <div className="px-5 py-14 text-center">
+                                <p className="text-sm font-medium">Ingen kundar funne</p>
+                                <p className="mt-1 text-xs text-[color:var(--admin-muted)]">Prøv eit anna søk eller filter.</p>
+                            </div>
+                        )}
+                    </div>
+                </section>
             </div>
+
+            {panelOpen ? (
+                <div className="fixed inset-0 z-50 flex justify-end bg-black/25 backdrop-blur-[1px]" onMouseDown={(event) => {
+                    if (event.target === event.currentTarget) void closePanel();
+                }}>
+                    <section
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="customer-panel-title"
+                        className="flex h-full w-full max-w-2xl flex-col border-l border-[color:var(--admin-line)] bg-[color:var(--admin-surface)] shadow-2xl"
+                    >
+                        <header className="flex items-start justify-between gap-4 border-b border-[color:var(--admin-line)] px-5 py-5 md:px-7">
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-muted)]">
+                                    {selectedCustomer ? "Kundekort" : "Ny kunde"}
+                                </p>
+                                <h2 id="customer-panel-title" className="mt-1 text-2xl tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>
+                                    {selectedCustomer ? selectedCustomer.displayName || selectedCustomer.companyName : "Opprett kunde"}
+                                </h2>
+                            </div>
+                            <button type="button" onClick={() => void closePanel()} className="rounded-full border border-[color:var(--admin-line)] bg-white px-3 py-1.5 text-sm hover:bg-neutral-50" aria-label="Lukk kundekort">Lukk</button>
+                        </header>
+
+                        <div className="flex-1 overflow-y-auto px-5 py-6 md:px-7">
+                            <div className="grid gap-5 sm:grid-cols-2">
+                                <label className="space-y-1.5 text-sm font-medium sm:col-span-2">Firmanamn / fakturanamn
+                                    <input type="text" value={form.companyName} onChange={(event) => updateForm("companyName", event.target.value)} className="w-full rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm font-normal outline-none" />
+                                </label>
+                                <div className="rounded-[14px] border border-[color:var(--admin-line)] bg-black/[0.018] p-4 sm:col-span-2">
+                                    <label className="flex items-center gap-3 text-sm font-medium">
+                                        <input type="checkbox" checked={form.sameAsCompanyName} onChange={(event) => updateForm("sameAsCompanyName", event.target.checked)} className="h-4 w-4" />
+                                        Bruk firmanamnet som visningsnamn
+                                    </label>
+                                    {!form.sameAsCompanyName ? (
+                                        <label className="mt-4 block space-y-1.5 text-sm font-medium">Visningsnamn / butikknamn
+                                            <input type="text" value={form.displayName} onChange={(event) => updateForm("displayName", event.target.value)} className="w-full rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm font-normal outline-none" />
+                                        </label>
+                                    ) : null}
+                                </div>
+                                <label className="space-y-1.5 text-sm font-medium">Kontaktperson
+                                    <input type="text" value={form.contactName} onChange={(event) => updateForm("contactName", event.target.value)} className="w-full rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm font-normal outline-none" />
+                                </label>
+                                <label className="space-y-1.5 text-sm font-medium">Telefon
+                                    <input type="tel" value={form.phone} onChange={(event) => updateForm("phone", event.target.value)} className="w-full rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm font-normal outline-none" />
+                                </label>
+                                <label className="space-y-1.5 text-sm font-medium">E-post
+                                    <input type="email" value={form.email} disabled={Boolean(selectedCustomer?.authUid)} onChange={(event) => updateForm("email", event.target.value)} className="w-full rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm font-normal outline-none disabled:bg-neutral-100 disabled:text-neutral-500" />
+                                </label>
+                                <label className="space-y-1.5 text-sm font-medium">Organisasjonsnummer
+                                    <input type="text" value={form.organizationNumber} onChange={(event) => updateForm("organizationNumber", event.target.value)} className="w-full rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm font-normal outline-none" />
+                                </label>
+                                <label className="space-y-1.5 text-sm font-medium sm:col-span-2">Opningstider / leveringsinformasjon
+                                    <textarea rows={3} value={form.openingHours} onChange={(event) => updateForm("openingHours", event.target.value)} className="w-full rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm font-normal outline-none" />
+                                </label>
+                                <label className="space-y-1.5 text-sm font-medium">Kundetype
+                                    <select value={form.customerType} onChange={(event) => updateForm("customerType", event.target.value as CustomerType)} className="w-full rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm font-normal outline-none">
+                                        <option value="retail">Retail</option><option value="grossist">Grossist</option>
+                                    </select>
+                                </label>
+                                <label className="flex items-center gap-3 rounded-[12px] border border-[color:var(--admin-line)] bg-black/[0.018] px-3 py-2.5 text-sm font-medium">
+                                    <input type="checkbox" checked={form.active} onChange={(event) => updateForm("active", event.target.checked)} className="h-4 w-4" /> Aktiv kunde
+                                </label>
+                            </div>
+
+                            {selectedCustomer ? (
+                                <section className="mt-7 rounded-[16px] border border-[color:var(--admin-line)] bg-white p-4">
+                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <h3 className="text-sm font-semibold">Tilgang til kundeområdet</h3>
+                                            <p className="mt-1 text-xs leading-5 text-[color:var(--admin-muted)]">
+                                                {selectedCustomer.authUid ? "Kundekontoen er aktiv. Send ei ny lenke dersom kunden treng nytt passord." : "Kunden er registrert utan innlogging. Kontoen blir oppretta når du sender tilgang."}
+                                            </p>
+                                        </div>
+                                        <button type="button" onClick={sendPasswordLink} disabled={sendingPasswordLink || !form.email.trim()} className="admin-button-secondary shrink-0 px-4 py-2 text-xs disabled:opacity-50">
+                                            {sendingPasswordLink ? "Sender …" : selectedCustomer.authUid ? "Send ny passordlenke" : "Opprett konto og send tilgang"}
+                                        </button>
+                                    </div>
+                                </section>
+                            ) : null}
+
+                            {formError ? <p role="alert" className="mt-5 rounded-[12px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</p> : null}
+                        </div>
+
+                        <footer className="flex flex-col-reverse gap-2 border-t border-[color:var(--admin-line)] bg-[color:var(--admin-surface)] px-5 py-4 sm:flex-row sm:justify-end md:px-7">
+                            <button type="button" onClick={() => void closePanel()} className="admin-button-secondary px-5 py-2.5 text-sm">Avbryt</button>
+                            <button type="button" onClick={saveCustomer} disabled={saving || (Boolean(selectedCustomer) && !hasChanges)} className="rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] disabled:cursor-not-allowed disabled:opacity-45">
+                                {saving ? "Lagrar …" : selectedCustomer ? "Lagre endringar" : "Opprett kunde"}
+                            </button>
+                        </footer>
+                    </section>
+                </div>
+            ) : null}
         </main>
     );
 }

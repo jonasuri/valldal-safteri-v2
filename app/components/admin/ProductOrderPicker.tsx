@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { sortVariantsBySize } from "@/lib/orderLineSorting";
 
 export type ProductOrderLine = {
     productId: string;
@@ -131,38 +132,8 @@ function getGroupStyles(label: string) {
     };
 }
 
-const VARIANT_ORDER = [
-    "80 ml",
-    "195 ml",
-    "390 ml",
-    "1 kg",
-    "2,5 kg",
-    "7,5 kg",
-    "80 g",
-    "250 ml",
-    "0,33 l",
-    "0,5 l",
-    "0,7 l",
-    "0,75 l",
-    "2,5 l",
-    "3 l",
-    "5 l",
-];
-
-function getVariantSortIndex(label: string) {
-    const index = VARIANT_ORDER.findIndex(
-        (value) => value.toLowerCase() === label.trim().toLowerCase()
-    );
-
-    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
-}
-
 function sortVariants(variants: ProductVariant[]) {
-    return [...variants].sort((a, b) => {
-        const diff = getVariantSortIndex(a.label) - getVariantSortIndex(b.label);
-        if (diff !== 0) return diff;
-        return a.label.localeCompare(b.label, "nb");
-    });
+    return sortVariantsBySize(variants);
 }
 
 function groupProductsByCategory(products: AdminProduct[]) {
@@ -377,11 +348,11 @@ export default function ProductOrderPicker({
     }
 
     return (
-        <section className="rounded-[24px] border border-neutral-200 bg-white p-6">
+        <section className="rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
-                    <h2 className="text-lg font-medium">{title}</h2>
-                    <p className="mt-1 text-sm text-neutral-500">
+                    <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+                    <p className="mt-1 text-sm text-[color:var(--admin-muted)]">
                         {description || `Produktliste med prisgruppe: ${customerTypeLabel(customerType)}.`}
                     </p>
                 </div>
@@ -392,9 +363,9 @@ export default function ProductOrderPicker({
                             key={brand}
                             type="button"
                             onClick={() => setBrandFilter(brand)}
-                            className={`rounded-full border px-3 py-1.5 text-sm transition ${brandFilter === brand
-                                ? "border-neutral-900 bg-neutral-900 text-white"
-                                : "border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                            className={`rounded-full px-3.5 py-2 text-xs font-medium transition ${brandFilter === brand
+                                ? "bg-[color:var(--admin-ink)] text-white"
+                                : "text-[color:var(--admin-muted)] hover:bg-black/5"
                                 }`}
                         >
                             {brand === "alle" ? "Alle" : brandLabel(brand)}
@@ -410,7 +381,7 @@ export default function ProductOrderPicker({
                     value={queryText}
                     onChange={(event) => setQueryText(event.target.value)}
                     placeholder="Søk produkt, kategori eller variant"
-                    className="w-full rounded-full border border-neutral-200 bg-white px-4 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-500"
+                    className="w-full rounded-full border border-[color:var(--admin-line-strong)] bg-white px-4 py-2.5 text-sm outline-none transition placeholder:text-neutral-400"
                 />
             </label>
 
@@ -513,7 +484,7 @@ export default function ProductOrderPicker({
                                     {group.products.map((product) => (
                                         <article
                                             key={product.id}
-                                            className="rounded-[20px] border border-neutral-200 bg-neutral-50 p-4"
+                                            className="rounded-[18px] border border-[color:var(--admin-line)] bg-black/[0.018] p-4"
                                         >
                                             <div className="flex items-start justify-between gap-4">
                                                 <div>
