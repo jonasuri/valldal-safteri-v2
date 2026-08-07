@@ -529,6 +529,7 @@ export default function AdminOrderDetailPage() {
             setSendingCustomerEmail("approval");
             if (!auth.currentUser) throw new Error("UNAUTHORIZED");
             await sendAdminCustomerEmail(auth.currentUser, orderId, "approval");
+            notify("Godkjenningsførespurnaden er send til kunden.", "success");
         } catch (error) {
             console.error(error);
             notify("Kunne ikkje sende til kundegodkjenning.", "error");
@@ -851,7 +852,8 @@ export default function AdminOrderDetailPage() {
                     : "Sjå plukkliste";
 
     const customerHasPortalAccess = Boolean(customer?.authUid);
-    const shouldShowCustomerApprovalButton = order?.status === "partial" && customerHasPortalAccess;
+    const customerCanReceiveEmail = Boolean(order?.customerEmail?.trim());
+    const shouldShowCustomerApprovalButton = order?.status === "partial" && customerCanReceiveEmail;
     const shouldShowManualCustomerDecision =
         order?.approval.status === "waiting" ||
         (order?.status === "partial" && !customerHasPortalAccess);
@@ -1664,7 +1666,9 @@ export default function AdminOrderDetailPage() {
                                 <p className="mt-3 text-sm leading-6 text-amber-800">
                                     {customerHasPortalAccess
                                         ? "Kunden kan svare i portalen. Dersom svaret kjem på telefon, e-post eller direkte, kan du registrere valet her på vegner av kunden."
-                                        : "Denne kunden har ikkje kundekonto. Ring eller send e-post til kunden, og registrer avtalen her når de har fått svar."}
+                                        : customerCanReceiveEmail
+                                            ? "Kunden kan svare direkte frå godkjenningsmeldinga på e-post. Dersom svaret kjem på telefon, vanleg e-post eller direkte, kan du registrere valet her."
+                                            : "Denne kunden har ikkje registrert e-postadresse. Ring kunden og registrer avtalen her når de har fått svar."}
                                 </p>
 
                                 <div className="mt-5 space-y-4">
