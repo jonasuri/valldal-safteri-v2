@@ -98,6 +98,8 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        let inventoryUpdated = false;
+
         await db.runTransaction(async (transaction) => {
             const currentSnapshot = await transaction.get(orderRef);
             if (!currentSnapshot.exists) throw new Error("ORDER_NOT_FOUND");
@@ -138,12 +140,16 @@ export async function POST(request: NextRequest) {
                 snapshot.ref.path,
                 { exists: snapshot.exists, onHand: Number(snapshot.data()?.onHand ?? 0) },
             ]));
+            const inventoryReady = inventoryEnabled && [...uniqueBalanceRefs.values()].every(
+                (ref) => balances.get(ref.path)?.exists
+            );
             const movementIds: string[] = [];
 
             prepared.forEach((item, index) => {
+                if (!inventoryReady) return;
                 if (keySnapshots[index].exists) return;
                 const balance = balances.get(item.balanceRef.path);
-                if (!balance?.exists) throw new Error(`INVENTORY_NOT_INITIALIZED:${item.info.sku}`);
+                if (!balance?.exists) return;
                 const movementQuantity = -item.delta;
                 const balanceAfter = balance.onHand + movementQuantity;
                 balances.set(item.balanceRef.path, { exists: true, onHand: balanceAfter });
@@ -201,7 +207,7 @@ export async function POST(request: NextRequest) {
                 "packing.status": hasMissingProducts ? "partial" : "complete",
                 "packing.completedAt": FieldValue.serverTimestamp(),
                 "packing.updatedAt": FieldValue.serverTimestamp(),
-                inventoryFulfillment: inventoryEnabled ? {
+                inventoryFulfillment: inventoryReady ? {
                     status: "posted",
                     postedAt: FieldValue.serverTimestamp(),
                     movementIds: [...previousMovementIds, ...movementIds],
@@ -216,7 +222,7 @@ export async function POST(request: NextRequest) {
                 updatedAt: FieldValue.serverTimestamp(),
             };
 
-            if (inventoryEnabled) {
+            if (inventoryReady) {
                 orderUpdate["packing.inventoryRevision"] = revision;
                 orderUpdate["packing.inventoryPostedLines"] = packingLines.map((line) => ({
                     productId: line.productId,
@@ -225,10 +231,11 @@ export async function POST(request: NextRequest) {
                 }));
             }
 
+            inventoryUpdated = inventoryReady;
             transaction.update(orderRef, orderUpdate);
         });
 
-        return NextResponse.json({ ok: true, inventoryUpdated: inventoryEnabled });
+        return NextResponse.json({ ok: true, inventoryUpdated });
     } catch (error) {
         console.error("Fullføring av pakking feila", error);
         const message = error instanceof Error ? error.message : "PACKING_FAILED";
