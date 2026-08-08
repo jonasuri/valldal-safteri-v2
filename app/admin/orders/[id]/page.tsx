@@ -10,6 +10,7 @@ import { sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmail
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 import ProductOrderPicker from "../../../components/admin/ProductOrderPicker";
 import { useSystemFeedback } from "@/app/components/SystemFeedback";
+import OrderDeliveryDialog from "@/app/components/admin/OrderDeliveryDialog";
 
 type OrderLine = {
     productId: string;
@@ -343,6 +344,7 @@ export default function AdminOrderDetailPage() {
     const [orderNumberInput, setOrderNumberInput] = useState("");
     const [creatingBackorder, setCreatingBackorder] = useState(false);
     const [showMobileOrderLines, setShowMobileOrderLines] = useState(false);
+    const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
     const [manualApprovalResponse, setManualApprovalResponse] = useState<ApprovalResponse>("deliver_partial_later");
     const [manualApprovalSource, setManualApprovalSource] = useState<ApprovalResponseSource>("phone");
     const [manualApprovalNote, setManualApprovalNote] = useState("");
@@ -493,6 +495,7 @@ export default function AdminOrderDetailPage() {
                 ...(order?.status === "new" ? { status: "processing" } : {}),
                 updatedAt: serverTimestamp(),
             });
+            notify("Ordrenummeret er lagra. Ordren er sett under behandling.", "success");
         } catch (error) {
             console.error(error);
             notify("Kunne ikkje lagre ordrenummer.", "error");
@@ -546,8 +549,16 @@ export default function AdminOrderDetailPage() {
             setSavingStatus(true);
             setSendingCustomerEmail("approval");
             if (!auth.currentUser) throw new Error("UNAUTHORIZED");
-            await sendAdminCustomerEmail(auth.currentUser, orderId, "approval");
-            notify("Godkjenningsførespurnaden er send til kunden.", "success");
+            const result = await sendAdminCustomerEmail(auth.currentUser, orderId, "approval") as {
+                emailSent?: boolean;
+                portalPublished?: boolean;
+            };
+            notify(
+                result.emailSent === false
+                    ? "Godkjenninga er publisert i kundeportalen. Sandbox-e-post er ikkje send."
+                    : "Godkjenningsførespurnaden er send til kunden og publisert i kundeportalen.",
+                "success"
+            );
         } catch (error) {
             console.error(error);
             notify("Kunne ikkje sende til kundegodkjenning.", "error");
@@ -979,10 +990,19 @@ export default function AdminOrderDetailPage() {
         if (order?.status === "packed") {
             return {
                 eyebrow: "Neste steg",
-                title: "Klar for utlevering",
+                title: "Registrer utlevering",
                 description: "Marker ordren som send, levert eller henta når varene går frå dykk.",
-                href: "#order-status",
-                label: "Oppdater status",
+                href: `/admin/orders/${order.id}/signature`,
+                label: "Registrer utlevering",
+            };
+        }
+        if (["shipped", "delivered", "picked_up"].includes(order?.status || "") && order?.invoice.status !== "invoiced") {
+            return {
+                eyebrow: "Neste steg",
+                title: "Merk ordren som fakturert",
+                description: "Utleveringa er registrert. Når fakturaen er oppretta, kan ordren avsluttast som fakturert.",
+                href: "#invoice",
+                label: "Gå til fakturering",
             };
         }
         return {
@@ -1136,10 +1156,68 @@ export default function AdminOrderDetailPage() {
                         <h2 className="mt-2 text-xl font-semibold tracking-tight">{nextAction.title}</h2>
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--admin-muted)]">{nextAction.description}</p>
                     </div>
-                    <Link href={nextAction.href} className="inline-flex shrink-0 items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)]">
-                        {nextAction.label}
-                    </Link>
+                    {order.status === "new" ? (
+                        <div className="flex w-full shrink-0 flex-col gap-2 sm:flex-row md:w-auto">
+                            <input
+                                value={orderNumberInput}
+                                onChange={(event) => setOrderNumberInput(event.target.value)}
+                                onKeyDown={(event) => {
+                                    if (event.key === "Enter") void saveOrderNumber();
+                                }}
+                                placeholder="Ordrenummer"
+                                aria-label="Ordrenummer"
+                                className="min-w-0 rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[color:var(--admin-accent)] sm:w-40"
+                            />
+                            <button
+                                type="button"
+                                onClick={saveOrderNumber}
+                                disabled={savingStatus || !orderNumberInput.trim()}
+                                className="rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] disabled:opacity-50"
+                            >
+                                {savingStatus ? "Lagrar …" : "Lagre og start behandling"}
+                            </button>
+                        </div>
+                    ) : order.status === "partial" && order.approval.status !== "waiting" && customerCanReceiveEmail ? (
+                        <button
+                            type="button"
+                            onClick={sendForApproval}
+                            disabled={savingStatus}
+                            className="inline-flex w-full shrink-0 items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] disabled:opacity-50 md:w-auto"
+                        >
+                            {sendingCustomerEmail === "approval" ? "Sender …" : "Send til kundegodkjenning"}
+                        </button>
+                    ) : order.status === "packed" ? (
+                        <button
+                            type="button"
+                            onClick={() => setShowDeliveryDialog(true)}
+                            className="inline-flex w-full shrink-0 items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] md:w-auto"
+                        >
+                            Registrer utlevering
+                        </button>
+                    ) : ["shipped", "delivered", "picked_up"].includes(order.status) && order.invoice.status !== "invoiced" ? (
+                        <button
+                            type="button"
+                            onClick={markAsInvoiced}
+                            disabled={savingInvoice || !order.orderNumber}
+                            className="inline-flex w-full shrink-0 items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] disabled:opacity-50 md:w-auto"
+                        >
+                            {savingInvoice ? "Lagrar …" : "Merk som fakturert"}
+                        </button>
+                    ) : (
+                        <Link href={nextAction.href} className="inline-flex shrink-0 items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)]">
+                            {nextAction.label}
+                        </Link>
+                    )}
                 </section>
+
+                {showDeliveryDialog ? (
+                    <OrderDeliveryDialog
+                        orderId={order.id}
+                        overlay
+                        onClose={() => setShowDeliveryDialog(false)}
+                        onComplete={() => setShowDeliveryDialog(false)}
+                    />
+                ) : null}
 
                 <div className="mt-5 grid gap-5 md:mt-6 md:gap-6 lg:grid-cols-[2fr_1fr]">
                     <section className="hidden rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:block md:p-6">
@@ -1539,7 +1617,7 @@ export default function AdminOrderDetailPage() {
                         </section>
 
                         {/* 7. Fakturering */}
-                        <section className="order-8 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-10">
+                        <section id="invoice" className="order-8 scroll-mt-6 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-10">
                             <h2 className="text-lg font-medium">Fakturering</h2>
 
                             <div className="mt-4 rounded-[14px] border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm">
@@ -1846,10 +1924,6 @@ export default function AdminOrderDetailPage() {
                             <section className="order-10 rounded-[20px] border border-emerald-200 bg-emerald-50 p-5 md:order-7">
                                 <h2 className="text-lg font-medium text-emerald-900">Kundesvar</h2>
 
-                                <p className="mt-3 text-sm leading-6 text-emerald-800">
-                                    {approvalResponseLabel(order.approval.response)}
-                                </p>
-
                                 {order.approval.respondedBy === "admin" ? (
                                     <div className="mt-4 rounded-[14px] border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-900">
                                         <div className="font-medium">Svar registrert av admin</div>
@@ -1872,10 +1946,14 @@ export default function AdminOrderDetailPage() {
                                     </div>
                                 ) : null}
 
-                                <div className="mt-4 rounded-[14px] border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-900">
-                                    {order.approval.response === "wait_for_complete"
-                                        ? "Ventar på resten"
-                                        : "Klar for levering"}
+                                <div className={`mt-4 rounded-[14px] border bg-white px-4 py-3 text-sm font-medium ${order.approval.response === "wait_for_complete" ? "border-amber-300 text-amber-950" : "border-emerald-200 text-emerald-900"}`}>
+                                    {order.approval.response === "deliver_partial_later"
+                                        ? order.backorder.status === "created"
+                                            ? "Klar for levering · restordre oppretta"
+                                            : "Klar for levering · opprettar restordre"
+                                        : order.approval.response === "deliver_partial_cancel_rest"
+                                            ? "Klar for levering · resten er sletta"
+                                            : "Kunden ventar på resten · prioriter når varene er tilgjengelege"}
                                 </div>
                                 {order.approval.response === "wait_for_complete" && missingOrderLines.length > 0 ? (
                                     <div className="mt-4 rounded-[14px] border border-amber-200 bg-white px-4 py-3">

@@ -31,7 +31,7 @@ export type PackingSlipDocumentData = {
     signatureUrl?: string | null;
     signedAt?: string | null;
     signedBy?: string | null;
-    deliveryType?: "delivered" | "picked_up" | null;
+    deliveryType?: "shipped" | "delivered" | "picked_up" | null;
     missingLinesDisposition?: "cancelled" | "backorder" | "waiting_for_stock" | null;
 };
 
@@ -300,7 +300,9 @@ export default function PackingSlipDocument({
                                         ? "Henta"
                                         : order.deliveryType === "delivered"
                                             ? "Levert"
-                                            : null,
+                                            : order.deliveryType === "shipped"
+                                                ? "Send"
+                                                : null,
                                     order.signedAt,
                                 ]
                                     .filter(Boolean)

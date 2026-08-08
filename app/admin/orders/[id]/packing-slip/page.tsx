@@ -45,7 +45,7 @@ type PackingSlipOrder = {
     signatureUrl?: string | null;
     signedAt?: string | null;
     signedBy?: string | null;
-    deliveryType?: "delivered" | "picked_up" | null;
+    deliveryType?: "shipped" | "delivered" | "picked_up" | null;
     approvalResponse?: string | null;
     createdAt: string;
     lines: PackingSlipLine[];
@@ -103,7 +103,9 @@ function mapOrder(id: string, data: any): PackingSlipOrder {
                 ? data.deliverySignature.signedBy
                 : null,
         deliveryType:
-            data.deliverySignature?.deliveryType === "picked_up"
+            data.deliverySignature?.deliveryType === "shipped"
+                ? "shipped"
+                : data.deliverySignature?.deliveryType === "picked_up"
                 ? "picked_up"
                 : data.deliverySignature?.deliveryType === "delivered"
                     ? "delivered"

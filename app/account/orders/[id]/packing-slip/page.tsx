@@ -44,7 +44,7 @@ type CustomerOrder = {
     signatureUrl?: string | null;
     signedAt?: string | null;
     signedBy?: string | null;
-    deliveryType?: "delivered" | "picked_up" | null;
+    deliveryType?: "shipped" | "delivered" | "picked_up" | null;
     customerType: string;
     approvalResponse?: string | null;
     totalExVat: number;
@@ -117,7 +117,9 @@ function mapOrder(id: string, data: any): CustomerOrder {
                 ? data.deliverySignature.signedBy
                 : null,
         deliveryType:
-            data.deliverySignature?.deliveryType === "picked_up"
+            data.deliverySignature?.deliveryType === "shipped"
+                ? "shipped"
+                : data.deliverySignature?.deliveryType === "picked_up"
                 ? "picked_up"
                 : data.deliverySignature?.deliveryType === "delivered"
                     ? "delivered"

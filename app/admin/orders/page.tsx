@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -16,7 +17,7 @@ type OrderStatus =
     | "change_requested"
     | "cancelled";
 
-type BackorderStatus = "none" | "open" | "cancelled" | "waiting_for_stock";
+type BackorderStatus = "none" | "open" | "cancelled" | "waiting_for_stock" | "created";
 
 type OrderRow = {
     id: string;
@@ -31,6 +32,7 @@ type OrderRow = {
     totalExVat: number;
     approvalStatus: string;
     approvalResponse: string | null;
+    approvalAdminSeen: boolean;
     backorderStatus: BackorderStatus;
     missingUnits: number;
     isBackorder: boolean;
@@ -44,6 +46,8 @@ type OrderRow = {
 
 type OrderFilter =
     | "all"
+    | "action"
+    | "controlled"
     | "approval"
     | "partial"
     | "new"
@@ -78,6 +82,8 @@ const statusStyles: Record<OrderStatus, string> = {
 
 const orderFilters: { value: OrderFilter; label: string }[] = [
     { value: "all", label: "Alle" },
+    { value: "action", label: "Krev handling" },
+    { value: "controlled", label: "Under kontroll" },
     { value: "work", label: "Under arbeid" },
     { value: "approval", label: "Ventande godkjenning" },
     { value: "partial", label: "Delpakka" },
@@ -87,28 +93,13 @@ const orderFilters: { value: OrderFilter; label: string }[] = [
     { value: "backorder", label: "Restordre" },
 ];
 
-function approvalResponseLabel(response: string | null) {
-    if (response === "deliver_partial_later") {
-        return "Klar for levering";
-    }
-
-    if (response === "deliver_partial_cancel_rest") {
-        return "Klar for levering";
-    }
-
-    if (response === "wait_for_complete") {
-        return "Ventar på resten";
-    }
-
-    return null;
-}
-
 function backorderStatusLabel(status: BackorderStatus) {
     const labels: Record<BackorderStatus, string | null> = {
         none: null,
         open: "Handling krevst: restordre",
         cancelled: "Rest sletta",
         waiting_for_stock: "Ventar på varer",
+        created: "Restordre oppretta",
     };
 
     return labels[status];
@@ -116,6 +107,34 @@ function backorderStatusLabel(status: BackorderStatus) {
 
 function isHistoricalOrder(status: OrderStatus) {
     return status === "picked_up" || status === "shipped" || status === "delivered" || status === "cancelled";
+}
+
+function actionLabel(order: OrderRow, pendingChangeRequests = 0) {
+    if (pendingChangeRequests > 0) return "Nytt endringsønske";
+    if (order.status === "new") return "Ny ordre";
+    if (order.approvalStatus === "answered" && !order.approvalAdminSeen) return "Nytt kundesvar";
+    if (order.backorderStatus === "waiting_for_stock") return "Kunden ventar på resten";
+    if (order.status === "partial" && order.approvalStatus !== "waiting" && order.approvalStatus !== "answered") {
+        return "Avklar manglande varer";
+    }
+    return null;
+}
+
+function controlLabel(order: OrderRow) {
+    if (order.status === "change_requested" && order.approvalStatus === "waiting") return "Ventar på kunden";
+    if (order.status === "processing") return "Under behandling";
+    if (order.status === "packed" && order.approvalResponse === "deliver_partial_later") {
+        return order.backorderStatus === "created"
+            ? "Klar for levering · restordre oppretta"
+            : "Klar for levering · opprettar restordre";
+    }
+    if (order.status === "packed" && order.approvalResponse === "deliver_partial_cancel_rest") {
+        return "Klar for levering · resten er sletta";
+    }
+    if (order.status === "packed") return "Klar for levering";
+    if (order.backorderStatus === "created") return "Restordre oppretta";
+    if (order.isBackorder) return "Restordre registrert";
+    return "Under kontroll";
 }
 
 function formatCurrency(value: number) {
@@ -164,8 +183,10 @@ function sortOrders(orders: OrderRow[]) {
     });
 }
 
-function filterOrders(orders: OrderRow[], filter: OrderFilter) {
+function filterOrders(orders: OrderRow[], filter: OrderFilter, pendingCounts: Record<string, number>) {
     if (filter === "all") return orders;
+    if (filter === "action") return orders.filter((order) => actionLabel(order, pendingCounts[order.id]) !== null);
+    if (filter === "controlled") return orders.filter((order) => actionLabel(order, pendingCounts[order.id]) === null);
     if (filter === "approval") return orders.filter((order) => order.status === "change_requested");
     if (filter === "partial") return orders.filter((order) => order.status === "partial");
     if (filter === "new") return orders.filter((order) => order.status === "new");
@@ -184,6 +205,7 @@ function filterOrders(orders: OrderRow[], filter: OrderFilter) {
 }
 
 export default function AdminOrdersPage() {
+    const router = useRouter();
     const [orders, setOrders] = useState<OrderRow[]>([]);
     const [activeFilter, setActiveFilter] = useState<OrderFilter>("all");
     const [historySearch, setHistorySearch] = useState("");
@@ -221,11 +243,10 @@ export default function AdminOrdersPage() {
     ).length;
     const pendingApprovalCount = orders.filter((order) => order.status === "change_requested").length;
     const notInvoicedCount = notInvoicedHistoricalOrders.length;
-    const sortedOrders = sortOrders(filterOrders(activeOrders, activeFilter));
-    const appBadgeCount =
-        orders.filter((order) => order.status === "new").length +
-        pendingApprovalCount +
-        activeRestorderCount;
+    const actionOrders = activeOrders.filter((order) => actionLabel(order, pendingChangeRequestCounts[order.id]) !== null);
+    const controlledOrders = activeOrders.filter((order) => actionLabel(order, pendingChangeRequestCounts[order.id]) === null);
+    const sortedOrders = sortOrders(filterOrders(activeOrders, activeFilter, pendingChangeRequestCounts));
+    const appBadgeCount = actionOrders.length;
 
     useEffect(() => {
         const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
@@ -269,6 +290,7 @@ export default function AdminOrdersPage() {
                     totalExVat: data.totalExVat || 0,
                     approvalStatus: typeof data.approval?.status === "string" ? data.approval.status : "not_required",
                     approvalResponse: typeof data.approval?.response === "string" ? data.approval.response : null,
+                    approvalAdminSeen: Boolean(data.approval?.adminSeenAt),
                     backorderStatus: typeof data.backorder?.status === "string" ? data.backorder.status : "none",
                     missingUnits,
                     isBackorder: data.isBackorder === true,
@@ -371,13 +393,13 @@ export default function AdminOrdersPage() {
                 </header>
 
                 <section className="mt-7 grid grid-cols-2 gap-3 xl:grid-cols-5">
-                    <button type="button" onClick={() => setActiveFilter("new")} className="rounded-[18px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm md:p-5">
-                        <p className="text-xs font-medium text-[color:var(--admin-muted)]">Nye</p>
-                        <p className="mt-2 text-3xl font-semibold">{orders.filter((o) => o.status === "new").length}</p>
+                    <button type="button" onClick={() => setActiveFilter("action")} className={`rounded-[18px] border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm md:p-5 ${actionOrders.length ? "border-rose-200 bg-rose-50/80" : "border-[color:var(--admin-line)] bg-[color:var(--admin-card)]"}`}>
+                        <p className={`text-xs font-medium ${actionOrders.length ? "text-rose-700" : "text-[color:var(--admin-muted)]"}`}>Krev handling</p>
+                        <p className={`mt-2 text-3xl font-semibold ${actionOrders.length ? "text-rose-900" : "text-neutral-900"}`}>{actionOrders.length}</p>
                     </button>
-                    <button type="button" onClick={() => setActiveFilter("work")} className="rounded-[18px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm md:p-5">
-                        <p className="text-xs font-medium text-[color:var(--admin-muted)]">Under arbeid</p>
-                        <p className="mt-2 text-3xl font-semibold">{orders.filter((o) => o.status === "processing" || o.status === "packed" || o.status === "partial").length}</p>
+                    <button type="button" onClick={() => setActiveFilter("controlled")} className="rounded-[18px] border border-emerald-100 bg-emerald-50/50 p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm md:p-5">
+                        <p className="text-xs font-medium text-emerald-700">Under kontroll</p>
+                        <p className="mt-2 text-3xl font-semibold text-emerald-900">{controlledOrders.length}</p>
                     </button>
                     <button type="button" onClick={() => setActiveFilter("approval")} className={`rounded-[18px] border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm md:p-5 ${pendingApprovalCount > 0 ? "border-amber-200 bg-amber-50/80" : "border-[color:var(--admin-line)] bg-[color:var(--admin-card)]"}`}>
                         <p className={`text-xs font-medium ${pendingApprovalCount > 0 ? "text-amber-700" : "text-[color:var(--admin-muted)]"}`}>
@@ -461,6 +483,15 @@ export default function AdminOrdersPage() {
                                     </div>
 
                                     <div className="mt-4 flex flex-wrap gap-2">
+                                        {actionLabel(order, pendingChangeRequestCounts[order.id]) ? (
+                                            <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
+                                                Krev handling · {actionLabel(order, pendingChangeRequestCounts[order.id])}
+                                            </span>
+                                        ) : (
+                                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800">
+                                                Under kontroll · {controlLabel(order)}
+                                            </span>
+                                        )}
                                         {order.isSandbox ? (
                                             <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-800">
                                                 Sandbox · e-post {order.sandboxEmailsEnabled ? "på" : "av"}
@@ -483,18 +514,7 @@ export default function AdminOrdersPage() {
                                             </span>
                                         ) : null}
 
-                                        {order.approvalStatus === "answered" && approvalResponseLabel(order.approvalResponse) ? (
-                                            <span
-                                                className={`rounded-full border px-2.5 py-1 text-xs ${order.approvalResponse === "wait_for_complete"
-                                                    ? "border-amber-200 bg-amber-50 text-amber-800"
-                                                    : "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                                    }`}
-                                            >
-                                                {approvalResponseLabel(order.approvalResponse)}
-                                            </span>
-                                        ) : null}
-
-                                        {backorderStatusLabel(order.backorderStatus) && order.approvalResponse !== "wait_for_complete" ? (
+                                        {backorderStatusLabel(order.backorderStatus) && order.approvalResponse !== "wait_for_complete" && order.status !== "packed" ? (
                                             <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs text-rose-800">
                                                 {backorderStatusLabel(order.backorderStatus)}
                                             </span>
@@ -550,7 +570,20 @@ export default function AdminOrdersPage() {
                             <tbody className="divide-y divide-neutral-100">
                                 {sortedOrders.length ? (
                                     sortedOrders.map((order) => (
-                                        <tr key={order.id} className={`transition hover:bg-black/[0.022] ${order.status === "new" || order.status === "change_requested" ? "bg-amber-50/35" : ""}`}>
+                                        <tr
+                                            key={order.id}
+                                            role="link"
+                                            tabIndex={0}
+                                            aria-label={`Opne ordre ${order.orderNumber}`}
+                                            onClick={() => router.push(`/admin/orders/${order.id}`)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === "Enter" || event.key === " ") {
+                                                    event.preventDefault();
+                                                    router.push(`/admin/orders/${order.id}`);
+                                                }
+                                            }}
+                                            className={`cursor-pointer transition hover:bg-black/[0.035] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--admin-accent)] ${actionLabel(order, pendingChangeRequestCounts[order.id]) ? "bg-rose-50/45" : ""}`}
+                                        >
                                             <td className="px-4 py-3">
                                                 <div className="font-medium text-neutral-900">
                                                     {order.orderNumber}
@@ -589,23 +622,21 @@ export default function AdminOrdersPage() {
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-wrap gap-1.5">
+                                                    {actionLabel(order, pendingChangeRequestCounts[order.id]) ? (
+                                                        <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
+                                                            {actionLabel(order, pendingChangeRequestCounts[order.id])}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-800">
+                                                            {controlLabel(order)}
+                                                        </span>
+                                                    )}
                                                     {pendingChangeRequestCounts[order.id] ? (
                                                         <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800">
                                                             Endringsønske ({pendingChangeRequestCounts[order.id]})
                                                         </span>
                                                     ) : null}
-                                                    {order.approvalStatus === "answered" && approvalResponseLabel(order.approvalResponse) ? (
-                                                        <span
-                                                            className={`rounded-full border px-2.5 py-1 text-xs ${order.approvalResponse === "wait_for_complete"
-                                                                ? "border-amber-200 bg-amber-50 text-amber-800"
-                                                                : "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                                                }`}
-                                                        >
-                                                            {approvalResponseLabel(order.approvalResponse)}
-                                                        </span>
-                                                    ) : null}
-
-                                                    {backorderStatusLabel(order.backorderStatus) && order.approvalResponse !== "wait_for_complete" ? (
+                                                    {backorderStatusLabel(order.backorderStatus) && order.approvalResponse !== "wait_for_complete" && order.status !== "packed" ? (
                                                         <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs text-rose-800">
                                                             {backorderStatusLabel(order.backorderStatus)}
                                                         </span>
@@ -686,7 +717,20 @@ export default function AdminOrdersPage() {
                                     <tbody className="divide-y divide-neutral-100">
                                         {notInvoicedHistoricalOrders.length ? (
                                             notInvoicedHistoricalOrders.map((order) => (
-                                                <tr key={order.id}>
+                                                <tr
+                                                    key={order.id}
+                                                    role="link"
+                                                    tabIndex={0}
+                                                    aria-label={`Opne ordre ${order.orderNumber}`}
+                                                    onClick={() => router.push(`/admin/orders/${order.id}`)}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === "Enter" || event.key === " ") {
+                                                            event.preventDefault();
+                                                            router.push(`/admin/orders/${order.id}`);
+                                                        }
+                                                    }}
+                                                    className="cursor-pointer transition hover:bg-amber-50/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--admin-accent)]"
+                                                >
                                                     <td className="px-4 py-3">
                                                         <div className="font-medium text-neutral-900">
                                                             {order.orderNumber}
@@ -812,7 +856,20 @@ export default function AdminOrdersPage() {
                                             <tbody className="divide-y divide-neutral-100">
                                                 {invoicedHistoricalOrders.length ? (
                                                     invoicedHistoricalOrders.map((order) => (
-                                                        <tr key={order.id}>
+                                                        <tr
+                                                            key={order.id}
+                                                            role="link"
+                                                            tabIndex={0}
+                                                            aria-label={`Opne ordre ${order.orderNumber}`}
+                                                            onClick={() => router.push(`/admin/orders/${order.id}`)}
+                                                            onKeyDown={(event) => {
+                                                                if (event.key === "Enter" || event.key === " ") {
+                                                                    event.preventDefault();
+                                                                    router.push(`/admin/orders/${order.id}`);
+                                                                }
+                                                            }}
+                                                            className="cursor-pointer transition hover:bg-black/[0.035] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--admin-accent)]"
+                                                        >
                                                             <td className="px-4 py-3">
                                                                 <div className="font-medium text-neutral-900">
                                                                     {order.orderNumber}

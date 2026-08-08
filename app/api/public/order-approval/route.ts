@@ -5,6 +5,7 @@ import { getAdminFirestore } from "@/lib/firebaseAdmin";
 import { sendInternalOrderEmail } from "@/lib/internalOrderEmail";
 import type { ApprovalResponse } from "@/lib/ordersFirestore";
 import { canSendOrderEmails } from "@/lib/sandbox";
+import { ensureBackorderForOrder } from "@/lib/serverOrderBackorder";
 
 export const runtime = "nodejs";
 const RESPONSES = new Set<ApprovalResponse>(["deliver_partial_later", "deliver_partial_cancel_rest", "wait_for_complete"]);
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest) {
                 updatedAt: FieldValue.serverTimestamp(),
             });
         });
+        if (response === "deliver_partial_later") await ensureBackorderForOrder(db, snapshot.id);
         const updated = await snapshot.ref.get();
         try { if (canSendOrderEmails(updated.data() || {})) await sendInternalOrderEmail({ event: "approval_response", orderId: snapshot.id, order: updated.data() || {} }); }
         catch (error) { console.error("Kundesvaret vart lagra, men internt varsel feila", error); }

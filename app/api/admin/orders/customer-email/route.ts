@@ -32,14 +32,28 @@ export async function POST(request: NextRequest) {
         const snapshot = await orderRef.get();
         if (!snapshot.exists) throw new Error("ORDER_NOT_FOUND");
         const order = snapshot.data() || {};
-        if (!text(order.customerEmail)) throw new Error("MISSING_CUSTOMER_EMAIL");
-        if (!canSendOrderEmails(order)) return NextResponse.json({ ok: true, skipped: "sandbox" });
+        const emailAllowed = canSendOrderEmails(order);
 
-        if (type === "confirmation") {
-            await sendCustomerOrderConfirmation(orderId, order);
-            await orderRef.update({ "customerEmails.confirmationSentAt": FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-        } else if (type === "approval") {
+        if (type === "approval") {
             if (order.packing?.status !== "partial") throw new Error("ORDER_NOT_PARTIAL");
+
+            if (!emailAllowed) {
+                await orderRef.update({
+                    status: "change_requested",
+                    "approval.required": true,
+                    "approval.status": "waiting",
+                    "approval.response": null,
+                    "approval.respondedAt": null,
+                    "approval.emailTokenHash": null,
+                    "approval.emailTokenExpiresAt": null,
+                    "approval.emailTokenUsedAt": null,
+                    "approval.portalPublishedAt": FieldValue.serverTimestamp(),
+                    updatedAt: FieldValue.serverTimestamp(),
+                });
+                return NextResponse.json({ ok: true, emailSent: false, portalPublished: true, skipped: "sandbox" });
+            }
+
+            if (!text(order.customerEmail)) throw new Error("MISSING_CUSTOMER_EMAIL");
             const token = randomBytes(32).toString("base64url");
             const tokenHash = createHash("sha256").update(token).digest("hex");
             const expiresAt = Timestamp.fromDate(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000));
@@ -52,6 +66,7 @@ export async function POST(request: NextRequest) {
                 "approval.emailTokenHash": tokenHash,
                 "approval.emailTokenExpiresAt": expiresAt,
                 "approval.emailTokenUsedAt": null,
+                "approval.portalPublishedAt": FieldValue.serverTimestamp(),
                 updatedAt: FieldValue.serverTimestamp(),
             });
             const approvalUrl = (choice: ApprovalResponse) => {
@@ -62,13 +77,22 @@ export async function POST(request: NextRequest) {
             };
             await sendCustomerApprovalEmail(orderId, { ...order, status: "change_requested" }, approvalUrl);
             await orderRef.update({ "customerEmails.approvalSentAt": FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+            return NextResponse.json({ ok: true, emailSent: true, portalPublished: true });
+        }
+
+        if (!emailAllowed) return NextResponse.json({ ok: true, emailSent: false, skipped: "sandbox" });
+        if (!text(order.customerEmail)) throw new Error("MISSING_CUSTOMER_EMAIL");
+
+        if (type === "confirmation") {
+            await sendCustomerOrderConfirmation(orderId, order);
+            await orderRef.update({ "customerEmails.confirmationSentAt": FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
         } else {
             const status = text(order.status);
             if (!["shipped", "delivered", "picked_up"].includes(status)) throw new Error("INVALID_DELIVERY_STATUS");
             await sendCustomerPackingSlip(orderId, order, status);
             await orderRef.update({ [`customerEmails.packingSlip.${status}SentAt`]: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
         }
-        return NextResponse.json({ ok: true });
+        return NextResponse.json({ ok: true, emailSent: true });
     } catch (error) {
         console.error("Sending av kundemelding feila", error);
         const message = error instanceof Error ? error.message : "CUSTOMER_EMAIL_FAILED";

@@ -526,6 +526,28 @@ export default function AccountOrderDetailPage() {
                     ) : null}
                 </header>
 
+                {order.status === "change_requested" && order.approval.status !== "answered" ? (
+                    <section className="mt-5 rounded-[22px] border-2 border-amber-300 bg-amber-50 p-5 shadow-sm md:flex md:items-center md:justify-between md:gap-6 md:p-6">
+                        <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">
+                                Handling krevst
+                            </p>
+                            <h2 className="mt-2 text-xl font-semibold tracking-tight text-amber-950 md:text-2xl">
+                                Vi treng svar frå dykk
+                            </h2>
+                            <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-900">
+                                Nokre varer manglar. Vel om vi skal sende det som er klart, slette resten eller vente til alt er tilgjengeleg.
+                            </p>
+                        </div>
+                        <a
+                            href="#customer-action"
+                            className="mt-4 inline-flex w-full shrink-0 items-center justify-center rounded-full bg-amber-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-amber-800 md:mt-0 md:w-auto"
+                        >
+                            Svar no
+                        </a>
+                    </section>
+                ) : null}
+
                 {order.status === "cancelled" ? (
                     <section className="mt-6 rounded-[24px] border border-neutral-300 bg-neutral-100 p-6 text-neutral-800">
                         <h2 className="text-lg font-medium">Bestillinga er kansellert</h2>

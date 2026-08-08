@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteField, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { postPackedOrderInventory } from "@/lib/inventory/orderFulfillment";
 
@@ -30,9 +30,9 @@ export type BackorderStatus = "none" | "open" | "cancelled" | "waiting_for_stock
 export type InvoiceStatus = "not_invoiced" | "invoiced";
 
 export type DeliverySignatureInput = {
-    signedBy: string;
-    signatureDataUrl: string;
-    deliveryType: "delivered" | "picked_up";
+    signedBy?: string;
+    signatureDataUrl?: string;
+    deliveryType: "shipped" | "delivered" | "picked_up";
 };
 
 export type OrderLineInput = {
@@ -195,12 +195,14 @@ export async function saveDeliverySignature(
 ) {
     await updateDoc(doc(db, "orders", orderId), {
         status: input.deliveryType,
-        deliverySignature: {
-            signedBy: input.signedBy,
-            signatureDataUrl: input.signatureDataUrl,
-            deliveryType: input.deliveryType,
-            signedAt: serverTimestamp(),
-        },
+        deliverySignature: input.signatureDataUrl
+            ? {
+                signedBy: input.signedBy || "",
+                signatureDataUrl: input.signatureDataUrl,
+                deliveryType: input.deliveryType,
+                signedAt: serverTimestamp(),
+            }
+            : deleteField(),
         updatedAt: serverTimestamp(),
     });
 }

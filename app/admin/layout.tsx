@@ -6,7 +6,8 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/sandbox";
 
 const ADMIN_NAVIGATION = [
@@ -39,6 +40,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     const [password, setPassword] = useState("");
     const [signingIn, setSigningIn] = useState(false);
     const [loginError, setLoginError] = useState("");
+    const [orderActionIds, setOrderActionIds] = useState<string[]>([]);
+    const [requestActionIds, setRequestActionIds] = useState<string[]>([]);
 
     const isAdminHome = pathname === "/admin";
     const isDocumentView =
@@ -46,6 +49,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         pathname.endsWith("/packing-slip") ||
         pathname.endsWith("/signature");
     const isAdmin = isAdminUser(user);
+    const orderNotificationCount = new Set([...orderActionIds, ...requestActionIds]).size;
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
@@ -55,6 +59,38 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        if (!isAdmin) {
+            setOrderActionIds([]);
+            setRequestActionIds([]);
+            return;
+        }
+
+        const unsubscribeOrders = onSnapshot(collection(db, "orders"), (snapshot) => {
+            setOrderActionIds(snapshot.docs.flatMap((orderDoc) => {
+                const order = orderDoc.data() as any;
+                const requiresAction =
+                    order.status === "new" ||
+                    (order.status === "partial" && order.approval?.status !== "waiting" && order.approval?.status !== "answered") ||
+                    (order.approval?.status === "answered" && !order.approval?.adminSeenAt) ||
+                    order.backorder?.status === "waiting_for_stock";
+                return requiresAction ? [orderDoc.id] : [];
+            }));
+        });
+        const unsubscribeRequests = onSnapshot(
+            query(collection(db, "orderChangeRequests"), where("status", "==", "pending")),
+            (snapshot) => setRequestActionIds(snapshot.docs.flatMap((doc) => {
+                const orderId = doc.data().orderId;
+                return typeof orderId === "string" && orderId ? [orderId] : [];
+            }))
+        );
+
+        return () => {
+            unsubscribeOrders();
+            unsubscribeRequests();
+        };
+    }, [isAdmin]);
 
     async function handleLogout() {
         await signOut(auth);
@@ -205,7 +241,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                     : "text-[color:var(--admin-muted)] hover:bg-black/5 hover:text-[color:var(--admin-ink)]"
                             }`}
                         >
-                            {item.shortLabel}
+                            <span>{item.shortLabel}</span>
+                            {item.href === "/admin/orders" && orderNotificationCount > 0 ? (
+                                <span className="ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                    {orderNotificationCount}
+                                </span>
+                            ) : null}
                         </Link>
                     ))}
                 </nav>
@@ -233,13 +274,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                 key={item.href}
                                 href={item.href}
                                 aria-current={isCurrent(item.href) ? "page" : undefined}
-                                className={`flex items-center rounded-[10px] px-3 py-2.5 text-sm font-medium transition ${
+                                className={`flex items-center justify-between rounded-[10px] px-3 py-2.5 text-sm font-medium transition ${
                                     isCurrent(item.href)
                                         ? "bg-[color:var(--admin-active)] text-[color:var(--admin-ink)]"
                                         : "text-[color:var(--admin-muted)] hover:bg-black/[0.035] hover:text-[color:var(--admin-ink)]"
                                 }`}
                             >
-                                {item.label}
+                                <span>{item.label}</span>
+                                {item.href === "/admin/orders" && orderNotificationCount > 0 ? (
+                                    <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                        {orderNotificationCount}
+                                    </span>
+                                ) : null}
                             </Link>
                         ))}
                     </div>

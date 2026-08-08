@@ -303,6 +303,27 @@ export default function AccountPage() {
                             <p className="mt-6 text-sm text-neutral-500">Hentar kundedata …</p>
                         ) : customer && customer.active ? (
                             <>
+                                {latestOrder?.status === "change_requested" ? (
+                                    <section className="mb-5 rounded-[24px] border-2 border-amber-300 bg-amber-50 p-6 shadow-sm md:flex md:items-center md:justify-between md:gap-8 md:p-7">
+                                        <div>
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">
+                                                Handling krevst
+                                            </p>
+                                            <h2 className="mt-2 text-2xl tracking-tight text-amber-950 md:text-3xl" style={{ fontFamily: "var(--font-serif)" }}>
+                                                Vi treng svar på bestillinga
+                                            </h2>
+                                            <p className="mt-3 max-w-2xl text-sm leading-6 text-amber-900">
+                                                Nokre varer manglar i ordre {latestOrder.orderNumber || "utan ordrenummer"}. Vel korleis de ønskjer at vi skal handtere resten.
+                                            </p>
+                                        </div>
+                                        <Link
+                                            href={`/account/orders/${latestOrder.id}?from=account#customer-action`}
+                                            className="mt-5 inline-flex w-full shrink-0 items-center justify-center rounded-full bg-amber-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-amber-800 md:mt-0 md:w-auto"
+                                        >
+                                            Svar på bestillinga
+                                        </Link>
+                                    </section>
+                                ) : null}
                                 <div className="rounded-[22px] border border-[color:var(--account-line)] bg-[color:var(--account-card)] p-6">
                                     <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--account-muted)]">
                                         Kundekonto

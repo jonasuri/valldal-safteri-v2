@@ -231,6 +231,10 @@ export async function POST(request: NextRequest) {
                 }));
             }
 
+            if (!hasMissingProducts && current.backorder?.status === "waiting_for_stock") {
+                orderUpdate["backorder.status"] = "none";
+            }
+
             inventoryUpdated = inventoryReady;
             transaction.update(orderRef, orderUpdate);
         });
