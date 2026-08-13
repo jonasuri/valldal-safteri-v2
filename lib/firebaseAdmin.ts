@@ -1,6 +1,7 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 function privateKey() {
     return process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
@@ -24,6 +25,7 @@ function getAdminApp() {
     return initializeApp({
         credential: cert({ projectId, clientEmail, privateKey: key }),
         projectId,
+        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
     });
 }
 
@@ -33,4 +35,16 @@ export function getAdminFirestore() {
 
 export function getAdminAuth() {
     return getAuth(getAdminApp());
+}
+
+export function getAdminStorage() {
+    return getStorage(getAdminApp());
+}
+
+export function getAdminStorageBucket() {
+    const bucketName = process.env.FIREBASE_ADMIN_STORAGE_BUCKET || process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+    if (!bucketName || !/^[a-z0-9._-]+\.(appspot\.com|firebasestorage\.app)$/.test(bucketName)) {
+        throw new Error("Firebase Storage manglar eit gyldig bøttenamn.");
+    }
+    return getAdminStorage().bucket(bucketName);
 }

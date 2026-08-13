@@ -76,6 +76,23 @@ a {
   box-shadow: 0 0 0 3px rgba(49, 92, 70, 0.10);
 }
 
+.admin-shell-content button:not(:disabled),
+.admin-shell-content a[href] {
+  cursor: pointer;
+}
+
+.admin-shell-content button:disabled {
+  cursor: not-allowed;
+}
+
+.admin-shell-content :is(button:not(:disabled), a[href])[class~="bg-[color:var(--admin-accent)]"] {
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.admin-shell-content :is(button:not(:disabled), a[href])[class~="bg-[color:var(--admin-accent)]"]:hover {
+  background-color: var(--admin-accent-hover);
+}
+
 .admin-button-secondary {
   border: 1px solid var(--admin-line-strong);
   border-radius: 999px;

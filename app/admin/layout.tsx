@@ -17,9 +17,11 @@ const ADMIN_NAVIGATION = [
     { href: "/admin/customers", label: "Kundar", shortLabel: "Kundar" },
     { href: "/admin/products", label: "Produkt", shortLabel: "Produkt" },
     { href: "/admin/inventory", label: "Lager", shortLabel: "Lager" },
+    { href: "/admin/production", label: "Produksjon", shortLabel: "Produksjon" },
 ];
 
 const ADMIN_SECONDARY_NAVIGATION = [
+    { href: "/admin/production/labels", label: "Etikettmalar" },
     { href: "/admin/website", label: "Nettside" },
     { href: "/admin/prices", label: "Prisar" },
     { href: "/admin/integrations/zettle", label: "Zettle" },
@@ -47,7 +49,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     const isDocumentView =
         pathname.endsWith("/confirmation") ||
         pathname.endsWith("/packing-slip") ||
-        pathname.endsWith("/signature");
+        pathname.endsWith("/signature") ||
+        pathname.endsWith("/print");
     const isAdmin = isAdminUser(user);
     const orderNotificationCount = new Set([...orderActionIds, ...requestActionIds]).size;
 
