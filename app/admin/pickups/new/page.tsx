@@ -161,6 +161,19 @@ export default function NewPickupPage() {
     const totalExVat = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
     const unitCount = lines.reduce((sum, line) => sum + line.quantity, 0);
 
+    function setCartLineQuantity(line: ProductOrderLine, value: number | string) {
+        const quantity = Math.max(0, Math.floor(Number(value) || 0));
+        setLines((current) => quantity > 0
+            ? current.map((item) =>
+                item.productId === line.productId && item.variantId === line.variantId
+                    ? { ...item, quantity }
+                    : item
+            )
+            : current.filter((item) =>
+                !(item.productId === line.productId && item.variantId === line.variantId)
+            ));
+    }
+
     function updateManualSameAsCompanyName(value: boolean) {
         setManualSameAsCompanyName(value);
         if (value) {
@@ -209,26 +222,30 @@ export default function NewPickupPage() {
 
         try {
             setSaving(true);
-            const customerId = await ensureCustomerId();
-            if (!customerId) return;
-
-            const customer = selectedCustomer;
-            const companyName = customer?.companyName || manualCustomerName.trim();
-            const displayName = customer?.displayName || (manualSameAsCompanyName ? companyName : manualDisplayName.trim() || companyName);
-            const customerType = customer?.customerType || manualCustomerType;
-            const customerSource = customer?.customerSource || "manual";
-            const authUid = customer?.authUid || "";
-
-            const pickupDateValue = pickupDate
-                ? new Date(`${pickupDate}T12:00:00`)
-                : new Date();
-
             const pickupRef = pickupIdRef.current
                 ? doc(db, "pickups", pickupIdRef.current)
                 : doc(collection(db, "pickups"));
             pickupIdRef.current = pickupRef.id;
             const previousSnapshot = editing ? await getDoc(pickupRef) : null;
             const previous = previousSnapshot?.exists() ? previousSnapshot.data() : null;
+            if (editing && !previous) throw new Error("Fann ikkje den opphavlege hentinga.");
+
+            const customerId = editing
+                ? String(previous?.customerId || "")
+                : await ensureCustomerId();
+            if (!customerId) return;
+
+            const customer = selectedCustomer;
+            const companyName = editing ? String(previous?.customerCompanyName || previous?.customerName || "") : customer?.companyName || manualCustomerName.trim();
+            const displayName = editing ? String(previous?.customerDisplayName || previous?.customerName || companyName) : customer?.displayName || (manualSameAsCompanyName ? companyName : manualDisplayName.trim() || companyName);
+            const customerType = editing ? String(previous?.customerType || "retail") : customer?.customerType || manualCustomerType;
+            const customerSource = editing ? String(previous?.customerSource || "manual") : customer?.customerSource || "manual";
+            const authUid = editing ? String(previous?.authUid || "") : customer?.authUid || "";
+
+            const pickupDateValue = pickupDate
+                ? new Date(`${pickupDate}T12:00:00`)
+                : new Date();
+
             const previousLines = Array.isArray(previous?.lines) ? previous.lines as ProductOrderLine[] : [];
             const previousSkipped = new Set(Array.isArray(previous?.inventoryFulfillment?.skippedSkus) ? previous.inventoryFulfillment.skippedSkus : []);
             const revision = (Number(previous?.inventoryRevision) || 0) + 1;
@@ -334,7 +351,7 @@ export default function NewPickupPage() {
                             {editing ? "Rediger henting" : "Registrer henting"}
                         </h1>
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
-                            {editing ? "Oppdater dato, mottakar eller varer i den registrerte hentinga." : "For varer som blir henta i butikken og fakturert samla seinare."}
+                            {editing ? "Kunden og varevalet er låste. Mengde, dato og kven som henta kan endrast." : "For varer som blir henta i butikken og fakturert samla seinare."}
                         </p>
                     </div>
 
@@ -356,7 +373,7 @@ export default function NewPickupPage() {
                 </div>
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.4fr_0.7fr]">
-                    <section className="rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
+                    <fieldset disabled={editing} className={`rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6 ${editing ? "opacity-65" : ""}`}>
                         <h2 className="text-lg font-medium">Kunde</h2>
                         <p className="mt-1 text-sm text-neutral-500">
                             Vel frå kunderegisteret, eller opprett ein enkel manuell kunde.
@@ -514,9 +531,9 @@ export default function NewPickupPage() {
                                 </select>
                             </label>
                         </div>
-                    </section>
+                    </fieldset>
 
-                    <ProductOrderPicker
+                    {!editing ? <ProductOrderPicker
                         customerId={selectedCustomerId || undefined}
                         customerType={activeCustomerType}
                         mode="pickup"
@@ -526,7 +543,12 @@ export default function NewPickupPage() {
                         description="Søk opp varer som kunden tek med seg no."
                         showProductsBeforeSearch={false}
                         scannerEnabled={Boolean(selectedCustomer || manualCustomerName.trim())}
-                    />
+                    /> : (
+                        <section className="rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:p-6">
+                            <h2 className="text-lg font-semibold tracking-tight">Registrerte varer</h2>
+                            <p className="mt-1 text-sm text-[color:var(--admin-muted)]">Endre mengda i handlekorga til høgre. Produkt og pris blir ikkje endra.</p>
+                        </section>
+                    )}
 
                     <aside className="space-y-6">
                         <section className="rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
@@ -563,9 +585,10 @@ export default function NewPickupPage() {
                                             {lines.map((line) => (
                                                 <div
                                                     key={`${line.productId}-${line.variantId}`}
-                                                    className="flex items-start justify-between gap-3"
+                                                    className="border-b border-neutral-200 pb-3 last:border-b-0 last:pb-0"
                                                 >
-                                                    <div>
+                                                    <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
                                                         <div className="font-medium text-neutral-900">
                                                             {line.productName}
                                                         </div>
@@ -575,12 +598,19 @@ export default function NewPickupPage() {
                                                     </div>
 
                                                     <div className="text-right">
-                                                        <div className="font-medium text-neutral-900">
-                                                            {line.quantity} stk
-                                                        </div>
+                                                        <div className="font-medium text-neutral-900">{formatCurrency(line.quantity * line.unitPrice)}</div>
                                                         <div className="text-xs text-neutral-500">
-                                                            {formatCurrency(line.quantity * line.unitPrice)}
+                                                            {formatCurrency(line.unitPrice)} per stk
                                                         </div>
+                                                    </div>
+                                                    </div>
+                                                    <div className="mt-2 flex items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <button type="button" onClick={() => setCartLineQuantity(line, line.quantity - 1)} className="h-8 w-8 rounded-full border border-neutral-300 bg-white text-sm hover:bg-neutral-100" aria-label={`Trekk frå ${line.productName} ${line.variantLabel}`}>−</button>
+                                                            <input type="number" min="0" value={line.quantity} onChange={(event) => setCartLineQuantity(line, event.target.value)} className="w-16 rounded-[9px] border border-neutral-300 bg-white px-2 py-1.5 text-center text-sm outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" aria-label={`Antal ${line.productName} ${line.variantLabel}`} />
+                                                            <button type="button" onClick={() => setCartLineQuantity(line, line.quantity + 1)} className="h-8 w-8 rounded-full border border-neutral-300 bg-white text-sm hover:bg-neutral-100" aria-label={`Legg til ${line.productName} ${line.variantLabel}`}>+</button>
+                                                        </div>
+                                                        <button type="button" onClick={() => setCartLineQuantity(line, 0)} className="text-xs font-medium text-red-700 hover:underline">Fjern</button>
                                                     </div>
                                                 </div>
                                             ))}
