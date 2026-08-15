@@ -351,7 +351,7 @@ export default function NewPickupPage() {
                             {editing ? "Rediger henting" : "Registrer henting"}
                         </h1>
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
-                            {editing ? "Kunden og varevalet er låste. Mengde, dato og kven som henta kan endrast." : "For varer som blir henta i butikken og fakturert samla seinare."}
+                            {editing ? "Kunden og prisgruppa er låste. Varer, mengde, dato og kven som henta kan endrast." : "For varer som blir henta i butikken og fakturert samla seinare."}
                         </p>
                     </div>
 
@@ -533,22 +533,17 @@ export default function NewPickupPage() {
                         </div>
                     </fieldset>
 
-                    {!editing ? <ProductOrderPicker
+                    <ProductOrderPicker
                         customerId={selectedCustomerId || undefined}
                         customerType={activeCustomerType}
                         mode="pickup"
                         lines={lines}
                         onChange={setLines}
                         title="Varer"
-                        description="Søk opp varer som kunden tek med seg no."
+                        description={editing ? "Legg til varer eller endre mengdene i den registrerte hentinga." : "Søk opp varer som kunden tek med seg no."}
                         showProductsBeforeSearch={false}
                         scannerEnabled={Boolean(selectedCustomer || manualCustomerName.trim())}
-                    /> : (
-                        <section className="rounded-[22px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:p-6">
-                            <h2 className="text-lg font-semibold tracking-tight">Registrerte varer</h2>
-                            <p className="mt-1 text-sm text-[color:var(--admin-muted)]">Endre mengda i handlekorga til høgre. Produkt og pris blir ikkje endra.</p>
-                        </section>
-                    )}
+                    />
 
                     <aside className="space-y-6">
                         <section className="rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
