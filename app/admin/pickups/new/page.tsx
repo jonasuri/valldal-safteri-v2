@@ -372,8 +372,26 @@ export default function NewPickupPage() {
                     </div>
                 </div>
 
-                <div className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.4fr_0.7fr]">
-                    <fieldset disabled={editing} className={`rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6 ${editing ? "opacity-65" : ""}`}>
+                <div className={`mt-6 grid gap-6 ${editing ? "lg:grid-cols-[1.5fr_0.7fr]" : "lg:grid-cols-[0.8fr_1.4fr_0.7fr]"}`}>
+                    {editing ? (
+                        <section className="rounded-[22px] border border-emerald-200 bg-emerald-50/70 p-5 lg:col-span-2">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Låst kunde</p>
+                                    <h2 className="mt-1 text-lg font-semibold text-neutral-950">
+                                        {selectedCustomer?.displayName || selectedCustomer?.companyName || "Hentar kunde …"}
+                                    </h2>
+                                    {selectedCustomer && selectedCustomer.displayName !== selectedCustomer.companyName ? (
+                                        <p className="mt-1 text-xs text-neutral-600">Fakturerast til: {selectedCustomer.companyName}</p>
+                                    ) : null}
+                                </div>
+                                <div className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800">
+                                    {customerTypeLabel(activeCustomerType)} · kan ikkje bytast
+                                </div>
+                            </div>
+                        </section>
+                    ) : (
+                    <fieldset className="rounded-[24px] border border-neutral-200 bg-white p-5 md:p-6">
                         <h2 className="text-lg font-medium">Kunde</h2>
                         <p className="mt-1 text-sm text-neutral-500">
                             Vel frå kunderegisteret, eller opprett ein enkel manuell kunde.
@@ -532,6 +550,7 @@ export default function NewPickupPage() {
                             </label>
                         </div>
                     </fieldset>
+                    )}
 
                     <ProductOrderPicker
                         customerId={selectedCustomerId || undefined}
