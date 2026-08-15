@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
+import { arrayUnion, doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
+import { requireActiveOperator } from "@/lib/adminOperators";
 import { auth, db } from "@/lib/firebase";
 import { completeOrderPacking } from "@/lib/completeOrderPacking";
 import { groupOrderLinesByBrand, sortOrderLines } from "@/lib/orderLineSorting";
@@ -149,10 +150,13 @@ export default function OrderPickPage() {
 
         try {
             setSavingPacking(true);
+            const operator = requireActiveOperator();
 
             await updateDoc(doc(db, "orders", orderId), {
                 "packing.lines": buildPackingLines(),
                 "packing.updatedAt": serverTimestamp(),
+                lastUpdatedByOperator: operator,
+                operatorHistory: arrayUnion({ action: "packing_draft_saved", operator, occurredAt: new Date() }),
                 updatedAt: serverTimestamp(),
             });
             setHasChanges(false);

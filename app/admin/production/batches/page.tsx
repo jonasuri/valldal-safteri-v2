@@ -140,6 +140,11 @@ function BatchCard({
           Råvarebatch: {rawBatches.join(", ")}
         </p>
       ) : null}
+      {(batch.completedByOperator?.name || batch.createdByOperator?.name) ? (
+        <p className="mt-3 text-[11px] text-[color:var(--admin-muted)]">
+          {batch.status === "completed" ? "Registrert" : "Starta"} av {batch.completedByOperator?.name || batch.createdByOperator?.name}
+        </p>
+      ) : null}
       {requiredLabelJobs.length ? (
         <div
           className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${downloadedLabelJobs === requiredLabelJobs.length ? "bg-emerald-50 text-emerald-700" : downloadedLabelJobs ? "bg-amber-50 text-amber-700" : "bg-neutral-100 text-neutral-600"}`}

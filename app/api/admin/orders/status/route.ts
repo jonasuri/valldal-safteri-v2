@@ -8,6 +8,13 @@ export const runtime = "nodejs";
 const STATUSES = new Set(["new", "processing", "packed", "partial", "picked_up", "shipped", "delivered", "change_requested", "cancelled"]);
 const DELIVERY = new Set(["picked_up", "shipped", "delivered"]);
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
+function parseOperator(value: unknown) {
+    const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    const id = text(item.id);
+    const name = text(item.name);
+    if (!id || !name) throw new Error("INVALID_OPERATOR");
+    return { id, name };
+}
 
 export async function POST(request: NextRequest) {
     try {
@@ -18,10 +25,20 @@ export async function POST(request: NextRequest) {
         const body = await request.json() as Record<string, unknown>;
         const orderId = text(body.orderId);
         const status = text(body.status);
+        const operator = parseOperator(body.operator);
         if (!orderId || !STATUSES.has(status)) throw new Error("INVALID_REQUEST");
         const db = getAdminFirestore();
         const ref = db.collection("orders").doc(orderId);
-        await ref.update({ status, updatedAt: FieldValue.serverTimestamp() });
+        await ref.update({
+            status,
+            updatedAt: FieldValue.serverTimestamp(),
+            lastUpdatedByOperator: operator,
+            operatorHistory: FieldValue.arrayUnion({
+                action: `status_${status}`,
+                operator,
+                occurredAt: new Date(),
+            }),
+        });
         let emailSent = false;
         let emailError = false;
         if (DELIVERY.has(status)) {

@@ -1,6 +1,7 @@
-import { addDoc, collection, deleteField, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { addDoc, arrayUnion, collection, deleteField, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { postPackedOrderInventory } from "@/lib/inventory/orderFulfillment";
+import { getStoredOperator, requireActiveOperator, type OperatorStamp } from "@/lib/adminOperators";
 
 export type OrderStatus =
     | "new"
@@ -87,7 +88,12 @@ function calculateOrderTotals(lines: OrderLineInput[]) {
     };
 }
 
+function operatorEvent(operator: OperatorStamp, action: string) {
+    return { action, operator, occurredAt: new Date() };
+}
+
 export async function createOrder(input: CreateOrderInput) {
+    const operator = input.source === "manual" ? requireActiveOperator() : null;
     const docRef = await addDoc(collection(db, "orders"), {
         orderNumber: null,
         status: "new" as OrderStatus,
@@ -129,6 +135,11 @@ export async function createOrder(input: CreateOrderInput) {
             invoicedAt: null,
         },
         deliverySignature: null,
+        ...(operator ? {
+            createdByOperator: operator,
+            lastUpdatedByOperator: operator,
+            operatorHistory: [operatorEvent(operator, "order_created")],
+        } : {}),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
     });
@@ -137,6 +148,7 @@ export async function createOrder(input: CreateOrderInput) {
 }
 
 export async function updateOrderLines(orderId: string, lines: OrderLineInput[]) {
+    const operator = requireActiveOperator();
     const totals = calculateOrderTotals(lines);
 
     await updateDoc(doc(db, "orders", orderId), {
@@ -148,6 +160,8 @@ export async function updateOrderLines(orderId: string, lines: OrderLineInput[])
             status: "not_started" as PackingStatus,
             lines: buildPackingLines(lines),
         },
+        lastUpdatedByOperator: operator,
+        operatorHistory: arrayUnion(operatorEvent(operator, "order_lines_updated")),
         updatedAt: serverTimestamp(),
     });
 }
@@ -157,6 +171,7 @@ export async function submitOrderApprovalResponse(
     response: ApprovalResponse,
     respondedBy: ApprovalRespondedBy = "customer"
 ) {
+    const operator = respondedBy === "admin" ? requireActiveOperator() : getStoredOperator();
     const nextStatus: OrderStatus = response === "wait_for_complete" ? "processing" : "packed";
     const orderRef = doc(db, "orders", orderId);
     const inventoryFulfillment = response === "wait_for_complete"
@@ -184,6 +199,10 @@ export async function submitOrderApprovalResponse(
         "approval.respondedAt": serverTimestamp(),
         "backorder.status": backorderStatus,
         "backorder.createdFromApproval": response,
+        ...(operator ? {
+            lastUpdatedByOperator: operator,
+            operatorHistory: arrayUnion(operatorEvent(operator, "approval_registered")),
+        } : {}),
         ...(inventoryFulfillment ? { inventoryFulfillment } : {}),
         updatedAt: serverTimestamp(),
     });
@@ -193,6 +212,7 @@ export async function saveDeliverySignature(
     orderId: string,
     input: DeliverySignatureInput
 ) {
+    const operator = requireActiveOperator();
     await updateDoc(doc(db, "orders", orderId), {
         status: input.deliveryType,
         deliverySignature: input.signatureDataUrl
@@ -203,6 +223,8 @@ export async function saveDeliverySignature(
                 signedAt: serverTimestamp(),
             }
             : deleteField(),
+        lastUpdatedByOperator: operator,
+        operatorHistory: arrayUnion(operatorEvent(operator, `order_${input.deliveryType}`)),
         updatedAt: serverTimestamp(),
     });
 }

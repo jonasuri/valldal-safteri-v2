@@ -9,6 +9,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } fr
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/sandbox";
+import AdminOperatorProvider from "@/app/components/admin/AdminOperatorProvider";
 
 const ADMIN_NAVIGATION = [
     { href: "/admin", label: "Oversikt", shortLabel: "Oversikt" },
@@ -21,6 +22,7 @@ const ADMIN_NAVIGATION = [
 ];
 
 const ADMIN_SECONDARY_NAVIGATION = [
+    { href: "/admin/operators", label: "Brukarar" },
     { href: "/admin/production/labels", label: "Etikettmalar" },
     { href: "/admin/website", label: "Nettside" },
     { href: "/admin/prices", label: "Prisar" },
@@ -207,7 +209,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         );
     }
 
-    if (isDocumentView) return <>{children}</>;
+    if (isDocumentView) return <AdminOperatorProvider>{children}</AdminOperatorProvider>;
 
     function isCurrent(href: string) {
         if (href === "/admin") return pathname === href;
@@ -215,6 +217,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
 
     return (
+        <AdminOperatorProvider>
         <div className="admin-shell min-h-screen bg-[color:var(--admin-canvas)] text-[color:var(--admin-ink)]">
             <header className="sticky top-0 z-40 border-b border-[color:var(--admin-line)] bg-[color:var(--admin-surface)]/95 backdrop-blur md:hidden">
                 <div className="flex h-16 items-center justify-between px-4">
@@ -330,5 +333,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
             <div className="admin-shell-content md:pl-60">{children}</div>
         </div>
+        </AdminOperatorProvider>
     );
 }

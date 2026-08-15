@@ -462,6 +462,11 @@ function CompletedBatchView({ batch }: { batch: ProductionBatch }) {
             <p className="mt-2 text-sm text-[color:var(--admin-muted)]">
               Fullført {completedDate}
             </p>
+            {batch.completedByOperator?.name ? (
+              <p className="mt-1 text-xs text-[color:var(--admin-muted)]">
+                Registrert av {batch.completedByOperator.name}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -506,6 +511,14 @@ function CompletedBatchView({ batch }: { batch: ProductionBatch }) {
               <p className="mt-1 text-xs text-[color:var(--admin-muted)]">
                 Oppskrift versjon {batch.recipeVersion}
               </p>
+              {batch.createdByOperator?.name ? (
+                <p className="mt-1 text-xs text-[color:var(--admin-muted)]">
+                  Starta av {batch.createdByOperator.name}
+                  {batch.worksheetPrintedByOperator?.name
+                    ? ` · arbeidsskjema skrive ut av ${batch.worksheetPrintedByOperator.name}`
+                    : ""}
+                </p>
+              ) : null}
             </div>
             <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800">
               Fullført · skriveverna

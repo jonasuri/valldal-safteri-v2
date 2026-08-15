@@ -18,6 +18,14 @@ function text(value: unknown) {
     return typeof value === "string" ? value.trim() : "";
 }
 
+function parseOperator(value: unknown) {
+    const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    const id = text(item.id);
+    const name = text(item.name);
+    if (!id || !name) throw new Error("INVALID_OPERATOR");
+    return { id, name };
+}
+
 function documentKey(...parts: string[]) {
     return parts.map((part) => encodeURIComponent(part.trim())).join("__");
 }
@@ -52,6 +60,7 @@ export async function POST(request: NextRequest) {
         const body = (await request.json()) as Record<string, unknown>;
         const orderId = text(body.orderId);
         const packingLines = parsePackingLines(body.packingLines);
+        const operator = parseOperator(body.operator);
         if (!orderId) throw new Error("INVALID_REQUEST");
 
         const db = getAdminFirestore();
@@ -220,6 +229,12 @@ export async function POST(request: NextRequest) {
                     skippedAt: FieldValue.serverTimestamp(),
                 },
                 updatedAt: FieldValue.serverTimestamp(),
+                lastUpdatedByOperator: operator,
+                operatorHistory: FieldValue.arrayUnion({
+                    action: "packing_completed",
+                    operator,
+                    occurredAt: new Date(),
+                }),
             };
 
             if (inventoryReady) {

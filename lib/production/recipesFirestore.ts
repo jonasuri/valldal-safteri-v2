@@ -1,6 +1,7 @@
 import { collection, doc, onSnapshot, serverTimestamp, setDoc, type Unsubscribe } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import type { ProductionRecipe, RecipeProcessStep, RecipeWarning } from "./types";
+import { requireActiveOperator } from "@/lib/adminOperators";
 
 function clean<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
@@ -36,11 +37,13 @@ export function subscribeProductionRecipeOverrides(callback: (recipes: Record<st
 export async function saveProductionRecipe(recipe: ProductionRecipe) {
     const user = auth.currentUser;
     if (!user) throw new Error("Du må vere innlogga for å redigere oppskrifta.");
+    const operator = requireActiveOperator();
     const nextRecipe = { ...clean(recipe), version: recipe.version + 1 };
     await setDoc(doc(db, "productionRecipes", recipe.id), {
         recipe: nextRecipe,
         updatedAt: serverTimestamp(),
         updatedBy: { uid: user.uid, email: user.email || null },
+        updatedByOperator: operator,
     });
     return nextRecipe;
 }

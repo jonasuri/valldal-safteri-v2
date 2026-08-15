@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { updateOrderLines, type OrderStatus } from "@/lib/ordersFirestore";
 import { sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
@@ -11,6 +11,7 @@ import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 import ProductOrderPicker from "../../../components/admin/ProductOrderPicker";
 import { useSystemFeedback } from "@/app/components/SystemFeedback";
 import OrderDeliveryDialog from "@/app/components/admin/OrderDeliveryDialog";
+import { requireActiveOperator } from "@/lib/adminOperators";
 
 type OrderLine = {
     productId: string;
@@ -63,6 +64,11 @@ type OrderDetail = {
     lines: OrderLine[];
     packingLines: PackingLine[];
     createdAt: string;
+    operatorHistory: Array<{
+        action: string;
+        operator: { id: string; name: string };
+        occurredAt: string;
+    }>;
     approval: {
         required: boolean;
         status: string;
@@ -224,6 +230,16 @@ function mapOrder(id: string, data: any): OrderDetail {
         lines: Array.isArray(data.lines) ? data.lines : [],
         packingLines: Array.isArray(data.packing?.lines) ? data.packing.lines : [],
         createdAt: formatDate(data.createdAt),
+        operatorHistory: Array.isArray(data.operatorHistory)
+            ? data.operatorHistory.flatMap((item: any) =>
+                item?.operator?.name
+                    ? [{
+                        action: typeof item.action === "string" ? item.action : "updated",
+                        operator: { id: String(item.operator.id || ""), name: item.operator.name },
+                        occurredAt: item.occurredAt ? formatDate(item.occurredAt) : "—",
+                    }]
+                    : [])
+            : [],
         approval: {
             required: data.approval?.required === true,
             status: typeof data.approval?.status === "string" ? data.approval.status : "not_required",
@@ -263,6 +279,33 @@ function mapOrder(id: string, data: any): OrderDetail {
                 signatureDataUrl: data.deliverySignature.signatureDataUrl,
             }
             : null,
+    };
+}
+
+const operatorActionLabels: Record<string, string> = {
+    order_created: "Ordre oppretta",
+    order_number_saved: "Ordrenummer registrert",
+    order_lines_updated: "Ordrelinjer endra",
+    packing_draft_saved: "Plukkliste lagra",
+    packing_completed: "Pakking fullført",
+    approval_registered: "Kundesvar registrert",
+    customer_decision_updated: "Kundeval endra",
+    invoice_marked: "Merka som fakturert",
+    invoice_reopened: "Flytta tilbake til ikkje fakturert",
+    backorder_created: "Restordre oppretta",
+    status_processing: "Sett under behandling",
+    status_packed: "Merka ferdig pakka",
+    status_picked_up: "Merka henta",
+    status_shipped: "Merka send",
+    status_delivered: "Merka levert",
+    status_cancelled: "Ordre kansellert",
+};
+
+function operatorUpdate(action: string) {
+    const operator = requireActiveOperator();
+    return {
+        lastUpdatedByOperator: operator,
+        operatorHistory: arrayUnion({ action, operator, occurredAt: new Date() }),
     };
 }
 
@@ -493,6 +536,7 @@ export default function AdminOrderDetailPage() {
             await updateDoc(doc(db, "orders", orderId), {
                 orderNumber: orderNumberInput.trim(),
                 ...(order?.status === "new" ? { status: "processing" } : {}),
+                ...operatorUpdate("order_number_saved"),
                 updatedAt: serverTimestamp(),
             });
             notify("Ordrenummeret er lagra. Ordren er sett under behandling.", "success");
@@ -513,6 +557,7 @@ export default function AdminOrderDetailPage() {
             await updateDoc(doc(db, "orders", orderId), {
                 "invoice.status": "invoiced",
                 "invoice.invoicedAt": serverTimestamp(),
+                ...operatorUpdate("invoice_marked"),
                 updatedAt: serverTimestamp(),
             });
         } catch (error) {
@@ -532,6 +577,7 @@ export default function AdminOrderDetailPage() {
             await updateDoc(doc(db, "orders", orderId), {
                 "invoice.status": "not_invoiced",
                 "invoice.invoicedAt": null,
+                ...operatorUpdate("invoice_reopened"),
                 updatedAt: serverTimestamp(),
             });
         } catch (error) {
@@ -675,6 +721,7 @@ export default function AdminOrderDetailPage() {
                         "backorder.status": "open",
                         updatedAt: serverTimestamp(),
                     };
+            Object.assign(nextUpdates, operatorUpdate("customer_decision_updated"));
 
             if (order?.backorder.createdOrderId && response !== "deliver_partial_later") {
                 const batch = writeBatch(db);
@@ -892,6 +939,9 @@ export default function AdminOrderDetailPage() {
                     status: "not_invoiced",
                     invoicedAt: null,
                 },
+                createdByOperator: requireActiveOperator(),
+                lastUpdatedByOperator: requireActiveOperator(),
+                operatorHistory: [{ action: "order_created", operator: requireActiveOperator(), occurredAt: new Date() }],
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             });
@@ -900,6 +950,7 @@ export default function AdminOrderDetailPage() {
                 "backorder.status": "created",
                 "backorder.createdOrderId": backorderRef.id,
                 "backorder.createdAt": serverTimestamp(),
+                ...operatorUpdate("backorder_created"),
                 updatedAt: serverTimestamp(),
             });
             notify("Pakkinga er stadfesta, og restordren er oppretta.", "success");
@@ -1546,6 +1597,27 @@ export default function AdminOrderDetailPage() {
                                 {order.deliverySignature ? "Signer på nytt" : "Signer mottak"}
                             </Link>
                         </section>
+
+                        {order.operatorHistory.length ? (
+                            <section className="order-7 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-10">
+                                <h2 className="text-lg font-medium">Aktivitet</h2>
+                                <p className="mt-1 text-sm text-neutral-500">
+                                    Kven som har utført dei siste handlingane.
+                                </p>
+                                <ol className="mt-4 space-y-3">
+                                    {[...order.operatorHistory].reverse().slice(0, 8).map((item, index) => (
+                                        <li key={`${item.action}-${item.occurredAt}-${index}`} className="border-l-2 border-neutral-200 pl-3 text-sm">
+                                            <p className="font-medium text-neutral-800">
+                                                {operatorActionLabels[item.action] || "Ordren er oppdatert"}
+                                            </p>
+                                            <p className="mt-0.5 text-xs text-neutral-500">
+                                                {item.operator.name} · {item.occurredAt}
+                                            </p>
+                                        </li>
+                                    ))}
+                                </ol>
+                            </section>
+                        ) : null}
 
                         {/* 5. Dokument */}
                         <section id="documents" className="order-6 scroll-mt-6 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-9">

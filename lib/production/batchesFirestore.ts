@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import type { CookPlan, ProductionRecipe } from "./types";
+import { requireActiveOperator, type OperatorStamp } from "@/lib/adminOperators";
 
 export type ProductionBatchStatus = "in_progress" | "completed";
 
@@ -49,6 +50,11 @@ export type ProductionBatch = ProductionBatchForm & {
   expectedYield: number;
   actualTotal: number | null;
   createdBy: { uid: string; email: string | null };
+  createdByOperator?: OperatorStamp;
+  updatedByOperator?: OperatorStamp;
+  completedByOperator?: OperatorStamp;
+  worksheetPrintedByOperator?: OperatorStamp;
+  worksheetPrintedAt?: Date | null;
   createdAt: Date | null;
   updatedAt: Date | null;
   completedAt: Date | null;
@@ -90,6 +96,7 @@ function mapBatch(
     createdAt: dateValue(data.createdAt),
     updatedAt: dateValue(data.updatedAt),
     completedAt: dateValue(data.completedAt),
+    worksheetPrintedAt: dateValue(data.worksheetPrintedAt),
     labelDownloads,
   } as ProductionBatch;
 }
@@ -101,6 +108,7 @@ export async function createProductionBatch(
 ) {
   const user = auth.currentUser;
   if (!user) throw new Error("Du må vere innlogga for å starte produksjonen.");
+  const operator = requireActiveOperator();
   const ref = doc(batchesCollection);
   const now = new Date();
   const year = now.getFullYear();
@@ -129,6 +137,8 @@ export async function createProductionBatch(
       actualTotal: null,
       ...clean(form),
       createdBy: { uid: user.uid, email: user.email || null },
+      createdByOperator: operator,
+      updatedByOperator: operator,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       completedAt: null,
@@ -143,6 +153,7 @@ export async function saveProductionBatch(
   expectedYield: number,
   actualTotal: number | null,
 ) {
+  const operator = requireActiveOperator();
   const ref = doc(db, "productionBatches", id);
   await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(ref);
@@ -153,6 +164,7 @@ export async function saveProductionBatch(
       ...clean(form),
       expectedYield,
       actualTotal,
+      updatedByOperator: operator,
       updatedAt: serverTimestamp(),
     });
   });
@@ -164,13 +176,26 @@ export async function completeProductionBatch(
   expectedYield: number,
   actualTotal: number,
 ) {
+  const operator = requireActiveOperator();
   await updateDoc(doc(db, "productionBatches", id), {
     ...clean(form),
     expectedYield,
     actualTotal,
     status: "completed" as ProductionBatchStatus,
     completedAt: serverTimestamp(),
+    completedByOperator: operator,
+    updatedByOperator: operator,
     updatedAt: serverTimestamp(),
+  });
+}
+
+export async function markProductionWorksheetPrinted(id: string) {
+  const operator = requireActiveOperator();
+  await updateDoc(doc(db, "productionBatches", id), {
+    worksheetPrintedAt: serverTimestamp(),
+    worksheetPrintedByOperator: operator,
+    updatedAt: serverTimestamp(),
+    updatedByOperator: operator,
   });
 }
 

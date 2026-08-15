@@ -1,5 +1,6 @@
 import type { User } from "firebase/auth";
 import type { OrderStatus } from "@/lib/ordersFirestore";
+import { requireActiveOperator } from "@/lib/adminOperators";
 
 async function post(url: string, user: User, body: Record<string, unknown>) {
     const token = await user.getIdToken();
@@ -18,5 +19,5 @@ export function sendAdminCustomerEmail(user: User, orderId: string, type: "confi
     return post("/api/admin/orders/customer-email", user, { orderId, type });
 }
 export function setAdminOrderStatus(user: User, orderId: string, status: OrderStatus) {
-    return post("/api/admin/orders/status", user, { orderId, status });
+    return post("/api/admin/orders/status", user, { orderId, status, operator: requireActiveOperator() });
 }
