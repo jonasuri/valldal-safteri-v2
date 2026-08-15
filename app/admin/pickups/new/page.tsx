@@ -5,12 +5,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDocs, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { fetchInventoryBalances, recordInventoryMovements } from "@/lib/inventory/firestore";
 import type { CustomerType } from "@/lib/customersFirestore";
 import ProductOrderPicker, { type ProductOrderLine } from "../../../components/admin/ProductOrderPicker";
 import { useSystemFeedback } from "@/app/components/SystemFeedback";
+import { requireActiveOperator } from "@/lib/adminOperators";
 
 type PickupCustomer = {
     id: string;
@@ -59,6 +60,15 @@ function mapCustomer(id: string, data: any): PickupCustomer {
     };
 }
 
+function getPickupFormDate(value: any) {
+    const date = value?.toDate ? value.toDate() : value instanceof Date ? value : null;
+    if (!date || Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
 export default function NewPickupPage() {
     const { notify } = useSystemFeedback();
     const router = useRouter();
@@ -81,6 +91,8 @@ export default function NewPickupPage() {
     const [pickedUpBy, setPickedUpBy] = useState("");
     const [lines, setLines] = useState<ProductOrderLine[]>([]);
     const [saving, setSaving] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [loadingPickup, setLoadingPickup] = useState(false);
     const [pickupDate, setPickupDate] = useState(() => {
         const today = new Date();
         return today.toISOString().slice(0, 10);
@@ -103,6 +115,26 @@ export default function NewPickupPage() {
 
         void loadCustomers();
     }, []);
+
+    useEffect(() => {
+        const pickupId = new URLSearchParams(window.location.search).get("edit");
+        if (!pickupId) return;
+        setLoadingPickup(true);
+        getDoc(doc(db, "pickups", pickupId))
+            .then((snapshot) => {
+                if (!snapshot.exists()) throw new Error("Fann ikkje hentinga.");
+                const data = snapshot.data();
+                pickupIdRef.current = snapshot.id;
+                setEditing(true);
+                setSelectedCustomerId(typeof data.customerId === "string" ? data.customerId : "");
+                setPickedUpBy(typeof data.pickedUpBy === "string" ? data.pickedUpBy : "");
+                setLines(Array.isArray(data.lines) ? data.lines : []);
+                const date = getPickupFormDate(data.pickupDate);
+                if (date) setPickupDate(date);
+            })
+            .catch((error) => notify(error instanceof Error ? error.message : "Klarte ikkje å hente hentinga.", "error"))
+            .finally(() => setLoadingPickup(false));
+    }, [notify]);
 
     const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId) || null;
     const activeCustomerType = selectedCustomer?.customerType || manualCustomerType;
@@ -195,6 +227,11 @@ export default function NewPickupPage() {
                 ? doc(db, "pickups", pickupIdRef.current)
                 : doc(collection(db, "pickups"));
             pickupIdRef.current = pickupRef.id;
+            const previousSnapshot = editing ? await getDoc(pickupRef) : null;
+            const previous = previousSnapshot?.exists() ? previousSnapshot.data() : null;
+            const previousLines = Array.isArray(previous?.lines) ? previous.lines as ProductOrderLine[] : [];
+            const previousSkipped = new Set(Array.isArray(previous?.inventoryFulfillment?.skippedSkus) ? previous.inventoryFulfillment.skippedSkus : []);
+            const revision = (Number(previous?.inventoryRevision) || 0) + 1;
             const inventoryBalances = await fetchInventoryBalances();
             const initializedSkus = new Set(
                 inventoryBalances.map((balance) => balance.sku)
@@ -204,22 +241,37 @@ export default function NewPickupPage() {
                     .filter((line) => !line.sku || !initializedSkus.has(line.sku))
                     .map((line) => line.sku || `${line.productName} · ${line.variantLabel}`)
             )];
+            const lineKeys = new Set([
+                ...previousLines.map((line) => `${line.productId}:${line.variantId}`),
+                ...lines.map((line) => `${line.productId}:${line.variantId}`),
+            ]);
+            const inventoryAdjustments = [...lineKeys].flatMap((key) => {
+                const previousLine = previousLines.find((line) => `${line.productId}:${line.variantId}` === key);
+                const nextLine = lines.find((line) => `${line.productId}:${line.variantId}` === key);
+                const sourceLine = nextLine || previousLine;
+                if (!sourceLine?.sku || !initializedSkus.has(sourceLine.sku)) return [];
+                const previousWasPosted = previousLine?.sku && !previousSkipped.has(previousLine.sku);
+                const previousQuantity = previousWasPosted ? previousLine.quantity : 0;
+                const nextQuantity = nextLine?.quantity || 0;
+                const quantity = previousQuantity - nextQuantity;
+                return quantity === 0 ? [] : [{ line: sourceLine, quantity }];
+            });
+            const operator = requireActiveOperator();
             const inventoryResult = await recordInventoryMovements(
-                lines
-                    .filter((line) => line.sku && initializedSkus.has(line.sku))
-                    .map((line) => ({
+                inventoryAdjustments.map(({ line, quantity }) => ({
                         sku: line.sku!,
-                        quantity: -line.quantity,
+                        quantity,
                         type: "pickup" as const,
                         source: "pickup" as const,
-                        idempotencyKey: `pickup:${pickupRef.id}:${line.productId}:${line.variantId}`,
+                        idempotencyKey: `pickup:${pickupRef.id}:revision:${revision}:${line.productId}:${line.variantId}`,
                         productId: line.productId,
                         variantId: line.variantId,
                         productName: line.productName,
                         variantName: line.variantLabel,
                         sourceId: pickupRef.id,
-                        note: "Trekt frå lager ved registrert henting.",
-                        metadata: { pickupId: pickupRef.id, customerId },
+                        note: editing ? "Lager korrigert etter redigert henting." : "Trekt frå lager ved registrert henting.",
+                        createdBy: operator.name,
+                        metadata: { pickupId: pickupRef.id, customerId, revision },
                     }))
             );
 
@@ -239,6 +291,7 @@ export default function NewPickupPage() {
                 totalExVat,
                 invoiceStatus: "not_invoiced",
                 source: "ipad",
+                inventoryRevision: revision,
                 inventoryFulfillment: {
                     status: skippedSkus.length === 0
                         ? "posted"
@@ -252,9 +305,10 @@ export default function NewPickupPage() {
                     skippedSkus,
                     postedAt: serverTimestamp(),
                 },
-                createdAt: serverTimestamp(),
+                ...(editing ? {} : { createdAt: serverTimestamp(), createdByOperator: operator }),
+                updatedByOperator: operator,
                 updatedAt: serverTimestamp(),
-            });
+            }, { merge: editing });
 
             pickupIdRef.current = null;
             router.push("/admin/pickups");
@@ -277,10 +331,10 @@ export default function NewPickupPage() {
                             Henting
                         </div>
                         <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
-                            Registrer henting
+                            {editing ? "Rediger henting" : "Registrer henting"}
                         </h1>
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
-                            For varer som blir henta i butikken og fakturert samla seinare.
+                            {editing ? "Oppdater dato, mottakar eller varer i den registrerte hentinga." : "For varer som blir henta i butikken og fakturert samla seinare."}
                         </p>
                     </div>
 
@@ -558,10 +612,10 @@ export default function NewPickupPage() {
                                 <button
                                     type="button"
                                     onClick={savePickup}
-                                    disabled={saving || !lines.length}
+                                    disabled={saving || loadingPickup || !lines.length}
                                     className="w-full rounded-full bg-neutral-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                    {saving ? "Lagrar …" : "Lagre henting"}
+                                    {saving ? "Lagrar …" : editing ? "Lagre endringar" : "Lagre henting"}
                                 </button>
 
                                 <Link

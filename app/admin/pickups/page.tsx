@@ -4,9 +4,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useSystemFeedback } from "@/app/components/SystemFeedback";
+import { fetchInventoryBalances, recordInventoryMovements } from "@/lib/inventory/firestore";
+import { requireActiveOperator } from "@/lib/adminOperators";
 
 type PickupLine = {
     productId: string;
@@ -16,6 +18,7 @@ type PickupLine = {
     brand: "safteri" | "bryggeri";
     quantity: number;
     unitPrice: number;
+    sku?: string;
 };
 
 type PickupRow = {
@@ -31,6 +34,7 @@ type PickupRow = {
     lineCount: number;
     unitCount: number;
     totalExVat: number;
+    skippedSkus: string[];
 };
 
 type CustomerPickupGroup = {
@@ -129,6 +133,9 @@ function mapPickup(id: string, data: any): PickupRow {
         lineCount: typeof data.lineCount === "number" ? data.lineCount : 0,
         unitCount: typeof data.unitCount === "number" ? data.unitCount : 0,
         totalExVat: typeof data.totalExVat === "number" ? data.totalExVat : 0,
+        skippedSkus: Array.isArray(data.inventoryFulfillment?.skippedSkus)
+            ? data.inventoryFulfillment.skippedSkus
+            : [],
     };
 }
 
@@ -212,12 +219,13 @@ function groupPickupsByDate(pickups: PickupRow[]): PickupDateGroup[] {
 }
 
 export default function AdminPickupsPage() {
-    const { notify } = useSystemFeedback();
+    const { notify, confirmAction } = useSystemFeedback();
     const [pickups, setPickups] = useState<PickupRow[]>([]);
     const [searchText, setSearchText] = useState("");
     const [savingCustomerId, setSavingCustomerId] = useState<string | null>(null);
     const [openCustomers, setOpenCustomers] = useState<Record<string, boolean>>({});
     const [confirmInvoiceGroup, setConfirmInvoiceGroup] = useState<CustomerPickupGroup | null>(null);
+    const [deletingPickupId, setDeletingPickupId] = useState<string | null>(null);
 
     useEffect(() => {
         const pickupsQuery = query(
@@ -313,6 +321,48 @@ export default function AdminPickupsPage() {
             notify("Kunne ikkje merke hentingane som fakturerte.", "error");
         } finally {
             setSavingCustomerId(null);
+        }
+    }
+
+    async function deletePickup(pickup: PickupRow) {
+        const confirmed = await confirmAction({
+            title: "Slett henting?",
+            message: `Hentinga frå ${pickup.pickupDateLabel} blir fjerna. Eventuelt lageruttak blir tilbakeført.`,
+            confirmLabel: "Slett henting",
+            destructive: true,
+        });
+        if (!confirmed) return;
+        try {
+            setDeletingPickupId(pickup.id);
+            const operator = requireActiveOperator();
+            const balances = await fetchInventoryBalances();
+            const initializedSkus = new Set(balances.map((balance) => balance.sku));
+            await recordInventoryMovements(
+                pickup.lines
+                    .filter((line) => line.sku && initializedSkus.has(line.sku) && !pickup.skippedSkus.includes(line.sku))
+                    .map((line) => ({
+                        sku: line.sku!,
+                        quantity: line.quantity,
+                        type: "return" as const,
+                        source: "pickup" as const,
+                        idempotencyKey: `pickup:${pickup.id}:deleted:${line.productId}:${line.variantId}`,
+                        productId: line.productId,
+                        variantId: line.variantId,
+                        productName: line.productName,
+                        variantName: line.variantLabel,
+                        sourceId: pickup.id,
+                        note: "Tilbakeført etter sletta henting.",
+                        createdBy: operator.name,
+                        metadata: { pickupId: pickup.id, deleted: true },
+                    })),
+            );
+            await deleteDoc(doc(db, "pickups", pickup.id));
+            notify("Hentinga er sletta.", "success");
+        } catch (error) {
+            console.error(error);
+            notify(error instanceof Error ? error.message : "Kunne ikkje slette hentinga.", "error");
+        } finally {
+            setDeletingPickupId(null);
         }
     }
 
@@ -421,7 +471,7 @@ export default function AdminPickupsPage() {
                             const customerKey = group.customerId || group.customerCompanyName;
                             const saving = savingCustomerId === customerKey;
                             const isOpen = openCustomers[customerKey] ?? false;
-                            const dateGroups = groupPickupsByDate(group.pickups);
+                            const pickupRows = [...group.pickups].sort((a, b) => (a.pickupDateValue?.getTime() || 0) - (b.pickupDateValue?.getTime() || 0));
 
                             return (
                                 <section
@@ -469,32 +519,37 @@ export default function AdminPickupsPage() {
                                                     <tr>
                                                         <th className="px-4 py-3 font-medium">Dato</th>
                                                         <th className="px-4 py-3 font-medium">Henta av</th>
-                                                        <th className="px-4 py-3 font-medium">Varer samla per dato</th>
+                                                        <th className="px-4 py-3 font-medium">Varer</th>
                                                         <th className="px-4 py-3 text-right font-medium">Sum eks. mva.</th>
+                                                        <th className="px-4 py-3 text-right font-medium">Handling</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-neutral-100">
-                                                    {dateGroups.map((dateGroup) => (
-                                                        <tr key={dateGroup.dateLabel}>
+                                                    {pickupRows.map((pickup) => (
+                                                        <tr key={pickup.id}>
                                                             <td className="px-4 py-3 align-top text-neutral-700">
-                                                                {dateGroup.dateLabel}
+                                                                {pickup.pickupDateLabel}
                                                             </td>
                                                             <td className="px-4 py-3 align-top text-neutral-700">
-                                                                {dateGroup.pickedUpByNames.length
-                                                                    ? dateGroup.pickedUpByNames.join(", ")
-                                                                    : "—"}
+                                                                {pickup.pickedUpBy || "—"}
                                                             </td>
                                                             <td className="px-4 py-3 align-top">
                                                                 <div className="space-y-1">
-                                                                    {dateGroup.lines.map((line) => (
-                                                                        <div key={`${dateGroup.dateLabel}-${line.productId}-${line.variantId}-${line.unitPrice}`} className="text-neutral-800">
+                                                                    {pickup.lines.map((line) => (
+                                                                        <div key={`${pickup.id}-${line.productId}-${line.variantId}-${line.unitPrice}`} className="text-neutral-800">
                                                                             {line.quantity} × {line.productName} {line.variantLabel}
                                                                         </div>
                                                                     ))}
                                                                 </div>
                                                             </td>
                                                             <td className="px-4 py-3 align-top text-right font-medium text-neutral-900">
-                                                                {formatCurrency(dateGroup.totalExVat)}
+                                                                {formatCurrency(pickup.totalExVat)}
+                                                            </td>
+                                                            <td className="px-4 py-3 align-top">
+                                                                <div className="flex justify-end gap-2">
+                                                                    <Link href={`/admin/pickups/new?edit=${encodeURIComponent(pickup.id)}`} className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-neutral-50">Rediger</Link>
+                                                                    <button type="button" disabled={deletingPickupId === pickup.id} onClick={() => void deletePickup(pickup)} className="rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">{deletingPickupId === pickup.id ? "Slettar …" : "Slett"}</button>
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     ))}
