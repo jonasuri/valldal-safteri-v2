@@ -1,5 +1,5 @@
-import { addDoc, arrayUnion, collection, deleteField, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { arrayUnion, deleteField, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import { postPackedOrderInventory } from "@/lib/inventory/orderFulfillment";
 import { getStoredOperator, requireActiveOperator, type OperatorStamp } from "@/lib/adminOperators";
 
@@ -93,58 +93,23 @@ function operatorEvent(operator: OperatorStamp, action: string) {
 }
 
 export async function createOrder(input: CreateOrderInput) {
-    const operator = input.source === "manual" ? requireActiveOperator() : null;
-    const docRef = await addDoc(collection(db, "orders"), {
-        orderNumber: null,
-        status: "new" as OrderStatus,
-        customerId: input.customerId,
-        customerName: input.customerName,
-        customerDisplayName: input.customerDisplayName?.trim() || input.customerName,
-        customerCompanyName: input.customerCompanyName?.trim() || input.customerName,
-        customerEmail: input.customerEmail,
-        customerType: input.customerType,
-        customerPhone: input.customerPhone || null,
-        customerContactName: input.customerContactName || null,
-        organizationNumber: input.organizationNumber || null,
-        source: input.source || "customer",
-        sandbox: input.sandbox ?? null,
-        note: input.note || null,
-        lineCount: input.lineCount,
-        unitCount: input.unitCount,
-        totalExVat: input.totalExVat,
-        lines: input.lines,
-        packing: {
-            status: "not_started" as PackingStatus,
-            lines: buildPackingLines(input.lines),
+    const user = auth.currentUser;
+    if (!user) throw new Error("UNAUTHORIZED");
+    const operator = input.source === "manual" ? requireActiveOperator() : getStoredOperator();
+    const token = await user.getIdToken();
+    const response = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
         },
-        approval: {
-            required: false,
-            status: "not_required" as ApprovalStatus,
-            response: null,
-            respondedBy: null,
-            respondedAt: null,
-            message: null,
-        },
-        backorder: {
-            status: "none" as BackorderStatus,
-            createdFromApproval: null,
-            note: null,
-        },
-        invoice: {
-            status: "not_invoiced" as InvoiceStatus,
-            invoicedAt: null,
-        },
-        deliverySignature: null,
-        ...(operator ? {
-            createdByOperator: operator,
-            lastUpdatedByOperator: operator,
-            operatorHistory: [operatorEvent(operator, "order_created")],
-        } : {}),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        body: JSON.stringify({ ...input, operator }),
     });
-
-    return docRef.id;
+    const result = await response.json().catch(() => ({})) as { orderId?: string; error?: string };
+    if (!response.ok || !result.orderId) {
+        throw new Error(result.error || `ORDER_CREATE_${response.status}`);
+    }
+    return result.orderId;
 }
 
 export async function updateOrderLines(orderId: string, lines: OrderLineInput[]) {

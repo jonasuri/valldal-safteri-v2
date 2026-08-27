@@ -21,3 +21,6 @@ export function sendAdminCustomerEmail(user: User, orderId: string, type: "confi
 export function setAdminOrderStatus(user: User, orderId: string, status: OrderStatus) {
     return post("/api/admin/orders/status", user, { orderId, status, operator: requireActiveOperator() });
 }
+export function confirmAdminOrder(user: User, orderId: string) {
+    return post("/api/admin/orders/confirm", user, { orderId, operator: requireActiveOperator() });
+}

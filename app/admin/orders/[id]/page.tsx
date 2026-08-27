@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { updateOrderLines, type OrderStatus } from "@/lib/ordersFirestore";
-import { sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
+import { confirmAdminOrder, sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 import ProductOrderPicker from "../../../components/admin/ProductOrderPicker";
 import { useSystemFeedback } from "@/app/components/SystemFeedback";
@@ -384,7 +384,6 @@ export default function AdminOrderDetailPage() {
     const [loading, setLoading] = useState(true);
     const [savingStatus, setSavingStatus] = useState(false);
     const [savingInvoice, setSavingInvoice] = useState(false);
-    const [orderNumberInput, setOrderNumberInput] = useState("");
     const [creatingBackorder, setCreatingBackorder] = useState(false);
     const [showMobileOrderLines, setShowMobileOrderLines] = useState(false);
     const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
@@ -415,7 +414,6 @@ export default function AdminOrderDetailPage() {
 
             const nextOrder = mapOrder(snapshot.id, snapshot.data());
             setOrder(nextOrder);
-            setOrderNumberInput(nextOrder.orderNumber || "");
             setLoading(false);
         });
 
@@ -527,22 +525,16 @@ export default function AdminOrderDetailPage() {
         }
     }
 
-    async function saveOrderNumber() {
-        if (!orderId || !orderNumberInput.trim()) return;
-
+    async function confirmOrder() {
+        if (!orderId) return;
         try {
             setSavingStatus(true);
-
-            await updateDoc(doc(db, "orders", orderId), {
-                orderNumber: orderNumberInput.trim(),
-                ...(order?.status === "new" ? { status: "processing" } : {}),
-                ...operatorUpdate("order_number_saved"),
-                updatedAt: serverTimestamp(),
-            });
-            notify("Ordrenummeret er lagra. Ordren er sett under behandling.", "success");
+            if (!auth.currentUser) throw new Error("UNAUTHORIZED");
+            await confirmAdminOrder(auth.currentUser, orderId);
+            notify("Ordren er stadfesta og sett under behandling.", "success");
         } catch (error) {
             console.error(error);
-            notify("Kunne ikkje lagre ordrenummer.", "error");
+            notify("Kunne ikkje stadfeste ordren.", "error");
         } finally {
             setSavingStatus(false);
         }
@@ -1003,10 +995,10 @@ export default function AdminOrderDetailPage() {
         if (order?.status === "new") {
             return {
                 eyebrow: "Neste steg",
-                title: "Registrer ordrenummer",
-                description: "Legg inn nummeret frå ordresystemet. Ordren går då vidare til behandling.",
+                title: "Stadfest ordre",
+                description: "Kontroller kunde, varer og pris før ordren blir sett under behandling.",
                 href: "#order-number",
-                label: "Gå til ordrenummer",
+                label: "Stadfest og start behandling",
             };
         }
         if (order?.status === "processing") {
@@ -1208,26 +1200,14 @@ export default function AdminOrderDetailPage() {
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--admin-muted)]">{nextAction.description}</p>
                     </div>
                     {order.status === "new" ? (
-                        <div className="flex w-full shrink-0 flex-col gap-2 sm:flex-row md:w-auto">
-                            <input
-                                value={orderNumberInput}
-                                onChange={(event) => setOrderNumberInput(event.target.value)}
-                                onKeyDown={(event) => {
-                                    if (event.key === "Enter") void saveOrderNumber();
-                                }}
-                                placeholder="Ordrenummer"
-                                aria-label="Ordrenummer"
-                                className="min-w-0 rounded-[12px] border border-[color:var(--admin-line-strong)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[color:var(--admin-accent)] sm:w-40"
-                            />
-                            <button
-                                type="button"
-                                onClick={saveOrderNumber}
-                                disabled={savingStatus || !orderNumberInput.trim()}
-                                className="rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] disabled:opacity-50"
-                            >
-                                {savingStatus ? "Lagrar …" : "Lagre og start behandling"}
-                            </button>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={confirmOrder}
+                            disabled={savingStatus}
+                            className="inline-flex w-full shrink-0 items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] disabled:opacity-50 md:w-auto"
+                        >
+                            {savingStatus ? "Stadfestar …" : "Stadfest og start behandling"}
+                        </button>
                     ) : order.status === "partial" && order.approval.status !== "waiting" && customerCanReceiveEmail ? (
                         <button
                             type="button"
@@ -1665,26 +1645,11 @@ export default function AdminOrderDetailPage() {
                         {/* 6. Ordrenummer */}
                         <section id="order-number" className="order-7 scroll-mt-6 rounded-[20px] border border-[color:var(--admin-line)] bg-[color:var(--admin-card)] p-5 md:order-5">
                             <h2 className="text-lg font-medium">Ordrenummer</h2>
-
-                            <input
-                                type="text"
-                                value={orderNumberInput}
-                                onChange={(e) => setOrderNumberInput(e.target.value)}
-                                placeholder="Ordrenummer frå ordresystem"
-                                className="mt-4 w-full rounded-[12px] border border-neutral-200 px-3 py-2 text-sm"
-                            />
-
-                            <button
-                                type="button"
-                                onClick={saveOrderNumber}
-                                disabled={savingStatus || !orderNumberInput.trim()}
-                                className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
-                            >
-                                Lagre ordrenummer
-                            </button>
-
-                            <p className="mt-3 text-xs text-neutral-500">
-                                Når ordrenummer blir registrert på ein ny ordre, blir han automatisk sett til «Under behandling».
+                            <div className="mt-4 rounded-[14px] border border-neutral-200 bg-neutral-50 px-4 py-3 font-medium text-neutral-900">
+                                {order.orderNumber || "Blir oppretta ved stadfesting"}
+                            </div>
+                            <p className="mt-3 text-xs leading-5 text-neutral-500">
+                                Ordrenummeret blir oppretta automatisk og følgjer ordren gjennom pakking, levering og fakturering.
                             </p>
                         </section>
 
