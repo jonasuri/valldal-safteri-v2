@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { updateOrderLines, type OrderStatus } from "@/lib/ordersFirestore";
-import { confirmAdminOrder, sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
+import { confirmAdminOrder, registerAdminApproval, sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 import ProductOrderPicker from "../../../components/admin/ProductOrderPicker";
 import { useSystemFeedback } from "@/app/components/SystemFeedback";
@@ -664,22 +664,6 @@ export default function AdminOrderDetailPage() {
     ) {
         if (!orderId) return;
 
-        const responseSource = options?.responseSource ?? "customer_portal";
-        const adminNote = options?.adminNote?.trim() || null;
-        const respondedBy = options?.respondedBy ?? "customer";
-        const respondedForCustomer = options?.respondedForCustomer === true;
-
-        const approvalUpdates = {
-            "approval.status": "answered",
-            "approval.response": response,
-            "approval.respondedBy": respondedBy,
-            "approval.respondedForCustomer": respondedForCustomer,
-            "approval.responseSource": responseSource,
-            "approval.adminNote": adminNote,
-            "approval.respondedAt": serverTimestamp(),
-            "approval.adminSeenAt": serverTimestamp(),
-        };
-
         try {
             setSavingStatus(true);
 
@@ -688,41 +672,20 @@ export default function AdminOrderDetailPage() {
                 return;
             }
 
-            const orderRef = doc(db, "orders", orderId);
-            const nextUpdates = response === "deliver_partial_cancel_rest"
-                ? {
-                    status: "packed",
-                    ...approvalUpdates,
-                    "backorder.status": "cancelled",
-                    "backorder.createdOrderId": null,
-                    "backorder.createdAt": null,
-                    updatedAt: serverTimestamp(),
-                }
-                : response === "wait_for_complete"
-                    ? {
-                        status: "processing",
-                        ...approvalUpdates,
-                        "backorder.status": "waiting_for_stock",
-                        "backorder.createdOrderId": null,
-                        "backorder.createdAt": null,
-                        updatedAt: serverTimestamp(),
-                    }
-                    : {
-                        status: "packed",
-                        ...approvalUpdates,
-                        "backorder.status": "open",
-                        updatedAt: serverTimestamp(),
-                    };
-            Object.assign(nextUpdates, operatorUpdate("customer_decision_updated"));
-
-            if (order?.backorder.createdOrderId && response !== "deliver_partial_later") {
-                const batch = writeBatch(db);
-                batch.delete(doc(db, "orders", order.backorder.createdOrderId));
-                batch.update(orderRef, nextUpdates);
-                await batch.commit();
-            } else {
-                await updateDoc(orderRef, nextUpdates);
-            }
+            if (!auth.currentUser) throw new Error("UNAUTHORIZED");
+            const savedSource = order?.approval.responseSource;
+            const responseSource = options?.responseSource && options.responseSource !== "customer_portal"
+                ? options.responseSource
+                : savedSource === "phone" || savedSource === "email" || savedSource === "in_person" || savedSource === "other"
+                    ? savedSource
+                    : "other";
+            await registerAdminApproval(
+                auth.currentUser,
+                orderId,
+                response,
+                responseSource,
+                options?.adminNote || "",
+            );
 
             setShowChangeCustomerDecision(false);
             notify(

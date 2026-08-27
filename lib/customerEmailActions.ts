@@ -24,3 +24,18 @@ export function setAdminOrderStatus(user: User, orderId: string, status: OrderSt
 export function confirmAdminOrder(user: User, orderId: string) {
     return post("/api/admin/orders/confirm", user, { orderId, operator: requireActiveOperator() });
 }
+export function registerAdminApproval(
+    user: User,
+    orderId: string,
+    response: "deliver_partial_later" | "deliver_partial_cancel_rest" | "wait_for_complete",
+    responseSource: "phone" | "email" | "in_person" | "other",
+    adminNote: string,
+) {
+    return post("/api/admin/orders/approval", user, {
+        orderId,
+        response,
+        responseSource,
+        adminNote,
+        operator: requireActiveOperator(),
+    });
+}
