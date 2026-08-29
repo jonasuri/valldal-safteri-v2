@@ -54,3 +54,18 @@ export function registerAdminDelivery(
         operator: requireActiveOperator(),
     });
 }
+export function registerAdminInvoice(user: User, orderId: string, invoiceNumber: string) {
+    return post("/api/admin/orders/invoice", user, {
+        orderId,
+        action: "register",
+        invoiceNumber,
+        operator: requireActiveOperator(),
+    });
+}
+export function reopenAdminInvoice(user: User, orderId: string) {
+    return post("/api/admin/orders/invoice", user, {
+        orderId,
+        action: "reopen",
+        operator: requireActiveOperator(),
+    });
+}

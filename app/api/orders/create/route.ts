@@ -186,6 +186,7 @@ export async function POST(request: NextRequest) {
                 invoice: {
                     status: "not_invoiced",
                     number: null,
+                    normalizedNumber: null,
                     invoicedAt: null,
                 },
                 deliverySignature: null,

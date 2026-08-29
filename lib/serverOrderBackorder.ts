@@ -107,6 +107,8 @@ export async function ensureBackorderForOrder(db: Firestore, orderId: string) {
             },
             invoice: {
                 status: "not_invoiced",
+                number: null,
+                normalizedNumber: null,
                 invoicedAt: null,
             },
             createdAt: FieldValue.serverTimestamp(),

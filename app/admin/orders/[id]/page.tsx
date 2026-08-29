@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { updateOrderLines, type OrderStatus } from "@/lib/ordersFirestore";
-import { confirmAdminOrder, registerAdminApproval, sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
+import { confirmAdminOrder, registerAdminApproval, registerAdminInvoice, reopenAdminInvoice, sendAdminCustomerEmail, setAdminOrderStatus } from "@/lib/customerEmailActions";
 import { groupOrderLinesByBrand } from "@/lib/orderLineSorting";
 import ProductOrderPicker from "../../../components/admin/ProductOrderPicker";
 import { useSystemFeedback } from "@/app/components/SystemFeedback";
@@ -90,6 +90,7 @@ type OrderDetail = {
     };
     invoice: {
         status: "not_invoiced" | "invoiced";
+        number: string | null;
         invoicedAt: string | null;
     };
     deliverySignature: {
@@ -270,6 +271,7 @@ function mapOrder(id: string, data: any): OrderDetail {
         },
         invoice: {
             status: data.invoice?.status === "invoiced" ? "invoiced" : "not_invoiced",
+            number: typeof data.invoice?.number === "string" ? data.invoice.number : null,
             invoicedAt: data.invoice?.invoicedAt ? formatDate(data.invoice.invoicedAt) : null,
         },
         deliverySignature: data.deliverySignature?.signatureDataUrl
@@ -291,6 +293,7 @@ const operatorActionLabels: Record<string, string> = {
     approval_registered: "Kundesvar registrert",
     customer_decision_updated: "Kundeval endra",
     invoice_marked: "Merka som fakturert",
+    invoice_number_changed: "Fakturanummer endra",
     invoice_reopened: "Flytta tilbake til ikkje fakturert",
     backorder_created: "Restordre oppretta",
     status_processing: "Sett under behandling",
@@ -384,6 +387,8 @@ export default function AdminOrderDetailPage() {
     const [loading, setLoading] = useState(true);
     const [savingStatus, setSavingStatus] = useState(false);
     const [savingInvoice, setSavingInvoice] = useState(false);
+    const [invoiceNumberInput, setInvoiceNumberInput] = useState("");
+    const [editingInvoiceNumber, setEditingInvoiceNumber] = useState(false);
     const [creatingBackorder, setCreatingBackorder] = useState(false);
     const [showMobileOrderLines, setShowMobileOrderLines] = useState(false);
     const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
@@ -492,6 +497,11 @@ export default function AdminOrderDetailPage() {
         setEditableOrderLines(order.lines);
     }, [order, editingOrderLines]);
 
+    useEffect(() => {
+        if (editingInvoiceNumber) return;
+        setInvoiceNumberInput(order?.invoice.number || "");
+    }, [order?.invoice.number, editingInvoiceNumber]);
+
 
     async function updateOrderStatus(nextStatus: OrderStatus) {
         if (nextStatus === "packed") {
@@ -541,20 +551,24 @@ export default function AdminOrderDetailPage() {
     }
 
     async function markAsInvoiced() {
-        if (!orderId || !order?.orderNumber) return;
+        const invoiceNumber = invoiceNumberInput.trim();
+        if (!orderId || !invoiceNumber) {
+            notify("Skriv inn fakturanummeret frå fakturasystemet.", "error");
+            return;
+        }
 
         try {
             setSavingInvoice(true);
-
-            await updateDoc(doc(db, "orders", orderId), {
-                "invoice.status": "invoiced",
-                "invoice.invoicedAt": serverTimestamp(),
-                ...operatorUpdate("invoice_marked"),
-                updatedAt: serverTimestamp(),
-            });
+            if (!auth.currentUser) throw new Error("UNAUTHORIZED");
+            await registerAdminInvoice(auth.currentUser, orderId, invoiceNumber);
+            setEditingInvoiceNumber(false);
+            notify("Fakturanummeret er registrert.", "success");
         } catch (error) {
             console.error(error);
-            notify("Kunne ikkje markere ordren som fakturert.", "error");
+            const message = error instanceof Error && error.message === "INVOICE_NUMBER_IN_USE"
+                ? "Fakturanummeret er allereie brukt på ei anna ordre."
+                : "Kunne ikkje registrere faktureringa.";
+            notify(message, "error");
         } finally {
             setSavingInvoice(false);
         }
@@ -563,15 +577,21 @@ export default function AdminOrderDetailPage() {
     async function markAsNotInvoiced() {
         if (!orderId) return;
 
+        const confirmed = await confirmAction({
+            title: "Opne faktureringa igjen?",
+            message: "Fakturanummeret blir fjerna frå ordren og kan registrerast på nytt.",
+            confirmLabel: "Opne igjen",
+            destructive: true,
+        });
+        if (!confirmed) return;
+
         try {
             setSavingInvoice(true);
-
-            await updateDoc(doc(db, "orders", orderId), {
-                "invoice.status": "not_invoiced",
-                "invoice.invoicedAt": null,
-                ...operatorUpdate("invoice_reopened"),
-                updatedAt: serverTimestamp(),
-            });
+            if (!auth.currentUser) throw new Error("UNAUTHORIZED");
+            await reopenAdminInvoice(auth.currentUser, orderId);
+            setInvoiceNumberInput("");
+            setEditingInvoiceNumber(false);
+            notify("Ordren er flytta tilbake til ikkje fakturert.", "success");
         } catch (error) {
             console.error(error);
             notify("Kunne ikkje markere ordren som ikkje fakturert.", "error");
@@ -1191,11 +1211,10 @@ export default function AdminOrderDetailPage() {
                     ) : ["shipped", "delivered", "picked_up"].includes(order.status) && order.invoice.status !== "invoiced" ? (
                         <button
                             type="button"
-                            onClick={markAsInvoiced}
-                            disabled={savingInvoice || !order.orderNumber}
+                            onClick={() => document.getElementById("invoice")?.scrollIntoView({ behavior: "smooth", block: "center" })}
                             className="inline-flex w-full shrink-0 items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)] disabled:opacity-50 md:w-auto"
                         >
-                            {savingInvoice ? "Lagrar …" : "Merk som fakturert"}
+                            Registrer fakturanummer
                         </button>
                     ) : (
                         <Link href={nextAction.href} className="inline-flex shrink-0 items-center justify-center rounded-full bg-[color:var(--admin-accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[color:var(--admin-accent-hover)]">
@@ -1645,12 +1664,33 @@ export default function AdminOrderDetailPage() {
                                     )}
                                 </div>
 
-                                <div className="mt-3 flex items-center justify-between gap-4">
-                                    <span className="text-neutral-600">Fakturanummer</span>
-                                    <span className="font-medium text-neutral-900">
-                                        {order.orderNumber || "Mangler ordrenummer"}
-                                    </span>
-                                </div>
+                                {order.invoice.status === "invoiced" && !editingInvoiceNumber ? (
+                                    <div className="mt-3 flex items-center justify-between gap-4">
+                                        <span className="text-neutral-600">Fakturanummer</span>
+                                        <span className="font-medium text-neutral-900">
+                                            {order.invoice.number || "Ikkje registrert"}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="mt-4">
+                                        <label htmlFor="invoice-number" className="mb-2 block text-sm font-medium text-neutral-800">
+                                            Fakturanummer frå Duett
+                                        </label>
+                                        <input
+                                            id="invoice-number"
+                                            value={invoiceNumberInput}
+                                            onChange={(event) => setInvoiceNumberInput(event.target.value)}
+                                            maxLength={64}
+                                            autoComplete="off"
+                                            inputMode="text"
+                                            placeholder="Til dømes 10452"
+                                            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-base text-neutral-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/15"
+                                        />
+                                        <p className="mt-2 text-xs leading-5 text-neutral-500">
+                                            Dette er nummeret frå fakturasystemet, ikkje VS-ordrenummeret {order.orderNumber}.
+                                        </p>
+                                    </div>
+                                )}
 
                                 {order.invoice.invoicedAt ? (
                                     <div className="mt-3 flex items-center justify-between gap-4">
@@ -1660,28 +1700,60 @@ export default function AdminOrderDetailPage() {
                                 ) : null}
                             </div>
 
-                            {order.invoice.status === "invoiced" ? (
-                                <button
-                                    type="button"
-                                    onClick={markAsNotInvoiced}
-                                    disabled={savingInvoice}
-                                    className="mt-4 inline-flex w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50"
-                                >
-                                    {savingInvoice ? "Lagrar …" : "Merk som ikkje fakturert"}
-                                </button>
+                            {order.invoice.status === "invoiced" && !editingInvoiceNumber ? (
+                                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setInvoiceNumberInput(order.invoice.number || "");
+                                            setEditingInvoiceNumber(true);
+                                        }}
+                                        disabled={savingInvoice}
+                                        className="inline-flex w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50"
+                                    >
+                                        Endre fakturanummer
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={markAsNotInvoiced}
+                                        disabled={savingInvoice}
+                                        className="inline-flex w-full items-center justify-center rounded-full border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-800 transition hover:bg-red-50 disabled:opacity-50"
+                                    >
+                                        {savingInvoice ? "Lagrar …" : "Opne faktureringa igjen"}
+                                    </button>
+                                </div>
                             ) : (
-                                <button
-                                    type="button"
-                                    onClick={markAsInvoiced}
-                                    disabled={savingInvoice || !order.orderNumber}
-                                    className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-amber-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-800 disabled:opacity-50"
-                                >
-                                    {savingInvoice ? "Lagrar …" : "Merk som fakturert"}
-                                </button>
+                                <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                    {editingInvoiceNumber ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setInvoiceNumberInput(order.invoice.number || "");
+                                                setEditingInvoiceNumber(false);
+                                            }}
+                                            disabled={savingInvoice}
+                                            className="rounded-full border border-neutral-300 bg-white px-5 py-2.5 text-sm font-medium text-neutral-800"
+                                        >
+                                            Avbryt
+                                        </button>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        onClick={markAsInvoiced}
+                                        disabled={savingInvoice || !invoiceNumberInput.trim()}
+                                        className="rounded-full bg-amber-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-amber-800 disabled:opacity-50"
+                                    >
+                                        {savingInvoice
+                                            ? "Lagrar …"
+                                            : order.invoice.status === "invoiced"
+                                                ? "Lagre nytt fakturanummer"
+                                                : "Registrer som fakturert"}
+                                    </button>
+                                </div>
                             )}
 
                             <p className="mt-3 text-xs leading-5 text-neutral-500">
-                                Fakturanummeret er same nummer som ordrenummeret frå fakturasystemet. Ordren må derfor ha ordrenummer før han kan merkast som fakturert.
+                                Fakturanummeret blir kontrollert mot andre ordrar. Endringar blir registrerte i aktivitetshistorikken.
                             </p>
                         </section>
 
