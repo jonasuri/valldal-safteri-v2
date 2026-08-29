@@ -1,7 +1,6 @@
-import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
-import { sendCustomerAccessEmail } from "@/lib/customerAccessEmail";
+import { sendCustomerPortalAccess } from "@/lib/serverCustomerAccess";
 
 export const runtime = "nodejs";
 
@@ -13,26 +12,6 @@ const GENERIC_RESPONSE = {
 
 function normalizeEmail(value: unknown) {
     return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
-
-function siteUrl() {
-    if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-    if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-        return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.replace(/^https?:\/\//, "")}`;
-    }
-    return "http://localhost:3000";
-}
-
-function customResetUrl(firebaseLink: string) {
-    const generated = new URL(firebaseLink);
-    const code = generated.searchParams.get("oobCode");
-    if (!code) throw new Error("INVALID_RESET_LINK");
-
-    const target = new URL("/auth/action", siteUrl());
-    target.searchParams.set("mode", "resetPassword");
-    target.searchParams.set("oobCode", code);
-    target.searchParams.set("lang", "nn");
-    return target.toString();
 }
 
 async function requireAdmin(request: NextRequest) {
@@ -73,63 +52,7 @@ export async function POST(request: NextRequest) {
         const customerSnapshot = await findCustomer(request, body);
         if (!customerSnapshot) return NextResponse.json(GENERIC_RESPONSE);
 
-        const customer = customerSnapshot.data();
-        if (!customer) return NextResponse.json(GENERIC_RESPONSE);
-        const email = normalizeEmail(customer.email);
-        if (!email || customer.active === false) return NextResponse.json(GENERIC_RESPONSE);
-
-        const auth = getAdminAuth();
-        let authUser;
-        try {
-            authUser = await auth.getUserByEmail(email);
-        } catch (error: unknown) {
-            if (
-                typeof error !== "object" ||
-                error === null ||
-                !("code" in error) ||
-                error.code !== "auth/user-not-found"
-            ) {
-                throw error;
-            }
-
-            authUser = await auth.createUser({
-                email,
-                displayName:
-                    String(customer.contactName || "").trim() ||
-                    String(customer.displayName || customer.companyName || "").trim(),
-                emailVerified: false,
-                disabled: false,
-            });
-        }
-
-        const storedUid = String(customer.authUid || "").trim();
-        if (storedUid !== authUser.uid || customer.customerSource !== "registered") {
-            await customerSnapshot.ref.set(
-                {
-                    authUid: authUser.uid,
-                    customerSource: "registered",
-                    updatedAt: FieldValue.serverTimestamp(),
-                },
-                { merge: true },
-            );
-        }
-
-        const firebaseLink = await auth.generatePasswordResetLink(email);
-        await sendCustomerAccessEmail({
-            email,
-            name:
-                String(customer.contactName || "").trim() ||
-                String(customer.displayName || customer.companyName || "").trim(),
-            resetUrl: customResetUrl(firebaseLink),
-        });
-
-        await customerSnapshot.ref.set(
-            {
-                passwordLinkSentAt: FieldValue.serverTimestamp(),
-                updatedAt: FieldValue.serverTimestamp(),
-            },
-            { merge: true },
-        );
+        await sendCustomerPortalAccess(customerSnapshot);
 
         return NextResponse.json(GENERIC_RESPONSE);
     } catch (error) {

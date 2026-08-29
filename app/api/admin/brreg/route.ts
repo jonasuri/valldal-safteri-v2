@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth } from "@/lib/firebaseAdmin";
+import { isAdminEmail } from "@/lib/sandbox";
 
 export async function GET(request: NextRequest) {
   try {
     const authorization = request.headers.get("authorization") || "";
     if (!authorization.startsWith("Bearer ")) throw new Error("UNAUTHORIZED");
-    await getAdminAuth().verifyIdToken(authorization.slice(7));
+    const decoded = await getAdminAuth().verifyIdToken(authorization.slice(7));
+    if (!isAdminEmail(decoded.email)) throw new Error("FORBIDDEN");
     const query = request.nextUrl.searchParams.get("q")?.trim() || "";
     if (query.length < 2) return NextResponse.json({ items: [] });
     const digits = query.replace(/\D/g, "");
@@ -37,6 +39,7 @@ export async function GET(request: NextRequest) {
           .join(", "),
         postalCode: address.postnummer || "",
         city: address.poststed || "",
+        organizationForm: unit.organisasjonsform?.beskrivelse || unit.organisasjonsform?.kode || "",
         active: !unit.slettedato,
       };
     });

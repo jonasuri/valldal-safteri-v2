@@ -1,5 +1,4 @@
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
@@ -10,7 +9,8 @@ import {
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { requireActiveOperator } from "@/lib/adminOperators";
 
 export type CustomerType = "retail" | "grossist";
 export type CustomerSource = "registered" | "manual";
@@ -130,67 +130,45 @@ export async function fetchCustomerById(id: string) {
 }
 
 export async function createCustomer(input: CustomerInput) {
-  const companyName = input.companyName.trim();
-  const sameAsCompanyName = input.sameAsCompanyName ?? true;
-  const displayName = sameAsCompanyName
-    ? companyName
-    : (input.displayName?.trim() ?? companyName);
-
-  const docRef = await addDoc(customersCollection, {
-    companyName,
-    displayName,
-    sameAsCompanyName,
-    contactName: input.contactName?.trim() ?? "",
-    email: input.email.trim().toLowerCase(),
-    phone: input.phone?.trim() ?? "",
-    organizationNumber: input.organizationNumber?.trim() ?? "",
-    openingHours: input.openingHours?.trim() ?? "",
-    legalAddress: input.legalAddress?.trim() ?? "",
-    visitingAddress: input.visitingAddress?.trim() ?? "",
-    visitingLat: input.visitingLat ?? null,
-    visitingLng: input.visitingLng ?? null,
-    authUid: input.authUid?.trim() ?? "",
-    customerSource:
-      input.customerSource ?? (input.authUid ? "registered" : "manual"),
-    customerType: input.customerType,
-    active: input.active ?? true,
-    profileCompleted: input.profileCompleted ?? false,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  const user = auth.currentUser;
+  if (!user) throw new Error("UNAUTHORIZED");
+  const token = await user.getIdToken();
+  const response = await fetch("/api/admin/customers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      ...input,
+      operator: requireActiveOperator(),
+      sendPortalInvite: false,
+    }),
   });
-
-  return docRef.id;
+  const result = await response.json().catch(() => ({})) as { customerId?: string; error?: string };
+  if (!response.ok || !result.customerId) throw new Error(result.error || `CUSTOMER_CREATE_${response.status}`);
+  return result.customerId;
 }
 
 export async function updateCustomer(
   id: string,
   updates: Partial<CustomerInput>,
 ) {
-  const nextUpdates: Record<string, unknown> = {
-    ...updates,
-    updatedAt: serverTimestamp(),
-  };
-
-  if (typeof updates.companyName === "string") {
-    nextUpdates.companyName = updates.companyName.trim();
-  }
-
-  if (typeof updates.sameAsCompanyName === "boolean") {
-    nextUpdates.sameAsCompanyName = updates.sameAsCompanyName;
-  }
-
-  const companyName =
-    typeof nextUpdates.companyName === "string"
-      ? nextUpdates.companyName
-      : undefined;
-
-  if (updates.sameAsCompanyName === true && companyName) {
-    nextUpdates.displayName = companyName;
-  } else if (typeof updates.displayName === "string") {
-    nextUpdates.displayName = updates.displayName.trim();
-  }
-
-  await updateDoc(doc(db, "customers", id), nextUpdates);
+  const current = await fetchCustomerById(id);
+  if (!current) throw new Error("CUSTOMER_NOT_FOUND");
+  const user = auth.currentUser;
+  if (!user) throw new Error("UNAUTHORIZED");
+  const token = await user.getIdToken();
+  const response = await fetch("/api/admin/customers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      ...current,
+      ...updates,
+      customerId: id,
+      operator: requireActiveOperator(),
+      sendPortalInvite: false,
+    }),
+  });
+  const result = await response.json().catch(() => ({})) as { error?: string };
+  if (!response.ok) throw new Error(result.error || `CUSTOMER_UPDATE_${response.status}`);
 }
 
 export async function connectCustomerAuthUid(id: string, authUid: string) {
