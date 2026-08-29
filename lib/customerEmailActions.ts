@@ -39,3 +39,18 @@ export function registerAdminApproval(
         operator: requireActiveOperator(),
     });
 }
+export function registerAdminDelivery(
+    user: User,
+    orderId: string,
+    deliveryType: "shipped" | "delivered" | "picked_up",
+    signedBy: string,
+    signatureDataUrl: string,
+) {
+    return post("/api/admin/orders/delivery", user, {
+        orderId,
+        deliveryType,
+        signedBy,
+        signatureDataUrl,
+        operator: requireActiveOperator(),
+    });
+}

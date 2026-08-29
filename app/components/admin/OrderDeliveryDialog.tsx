@@ -3,8 +3,7 @@
 import { useRef, useState } from "react";
 import SignatureCanvas from "react-signature-canvas";
 import { auth } from "@/lib/firebase";
-import { setAdminOrderStatus } from "@/lib/customerEmailActions";
-import { saveDeliverySignature } from "@/lib/ordersFirestore";
+import { registerAdminDelivery } from "@/lib/customerEmailActions";
 
 type DeliveryType = "shipped" | "delivered" | "picked_up";
 
@@ -61,12 +60,14 @@ export default function OrderDeliveryDialog({ orderId, onClose, onComplete, over
         try {
             setSaving(true);
             setError(null);
-            await saveDeliverySignature(orderId, {
-                ...(signatureDataUrl ? { signedBy: receiverName.trim(), signatureDataUrl } : {}),
-                deliveryType,
-            });
             if (!auth.currentUser) throw new Error("UNAUTHORIZED");
-            await setAdminOrderStatus(auth.currentUser, orderId, deliveryType);
+            await registerAdminDelivery(
+                auth.currentUser,
+                orderId,
+                deliveryType,
+                receiverName.trim(),
+                signatureDataUrl,
+            );
             onComplete();
         } catch {
             setError("Klarte ikkje registrere utleveringa.");
